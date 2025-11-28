@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Uygulamamız, size en yakın kafe ve mekanları listelemek, mesafeyi hesaplamak ve haritada göstermek için konumunuzu kullanır.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Uygulamamız kapalıyken bile yakınınızdaki uygun Vibe'ları kontrol etmeye devam etmek isterseniz bu izni kullanabilirsiniz.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Uygulamamız kapalıyken bile yakınınızdaki uygun Vibe'ları kontrol etmeye devam etmek isterseniz bu izni kullanabilirsiniz.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -12,6 +18,8 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>NSUserTrackingUsageDescription</key>
+<string>Bu uygulama deneyiminizi kişiselleştirmek için kullanılır</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -22,13 +30,18 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>NSContactsUsageDescription</key>
+<string>Arkadaşlarınızı eklemek için iletişim listenize erişmemiz gerekiyor</string>
+<key>NSCameraUsageDescription</key>
+<string>Profil fotoğrafı için kamera erişimi gerekli</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>Profil fotoğrafı seçmek için galeri erişimi gerekli</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-	  <!-- Do not change NSAllowsArbitraryLoads to true, or you will risk app rejection! -->
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 		<key>NSAllowsLocalNetworking</key>
@@ -36,6 +49,8 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
+	<key>RCTNewArchEnabled</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
