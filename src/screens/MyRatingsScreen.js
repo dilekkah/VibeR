@@ -1,330 +1,372 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
-  SafeAreaView,
   TouchableOpacity,
-  Alert,
+  SafeAreaView,
+  ScrollView,
+  Animated,
+  StatusBar,
+  Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import { useTheme } from '../context/ThemeContext';
 
-const RATINGS_KEY = '@ratings';
+const { width } = Dimensions.get('window');
 
-const MyRatingsScreen = ({ navigation }) => {
-  const [myRatings, setMyRatings] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
+export default function MyRatingsScreen({ navigation }) {
+  const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { theme } = useTheme();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      loadUserAndRatings();
-    }, [])
-  );
+  useEffect(() => {
+    loadRatings();
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
 
-  const loadUserAndRatings = async () => {
+  const loadRatings = async () => {
     try {
-      const userJson = await AsyncStorage.getItem('currentUser');
-      if (userJson) {
-        const user = JSON.parse(userJson);
-        setCurrentUser(user);
-
-        const ratingsJson = await AsyncStorage.getItem(RATINGS_KEY);
-        if (ratingsJson) {
-          const allRatings = JSON.parse(ratingsJson);
-          const userRatings = allRatings.filter(r => r.userId === user.id);
-          setMyRatings(userRatings);
-        }
+      const ratingsJson = await AsyncStorage.getItem('userRatings');
+      if (ratingsJson) {
+        setRatings(JSON.parse(ratingsJson));
       }
     } catch (error) {
-      console.error('Veriler yüklenemedi:', error);
+      console.error('Error loading ratings:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteRating = (ratingId) => {
-    Alert.alert(
-      'Değerlendirmeyi Sil',
-      'Bu değerlendirmeyi silmek istediğinizden emin misiniz?',
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Sil',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const ratingsJson = await AsyncStorage.getItem(RATINGS_KEY);
-              if (ratingsJson) {
-                const allRatings = JSON.parse(ratingsJson);
-                const updatedRatings = allRatings.filter(r => r.id !== ratingId);
-                await AsyncStorage.setItem(RATINGS_KEY, JSON.stringify(updatedRatings));
-                setMyRatings(myRatings.filter(r => r.id !== ratingId));
-                Alert.alert('Başarılı', 'Değerlendirme silindi');
-              }
-            } catch (error) {
-              Alert.alert('Hata', 'Değerlendirme silinemedi');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const renderStars = (rating) => {
-    return (
-      <View style={styles.starsContainer}>
-        {[1, 2, 3, 4, 5].map((star) => (
-          <Text key={star} style={styles.star}>
-            {star <= rating ? '⭐' : '☆'}
-          </Text>
-        ))}
-      </View>
-    );
+    return '⭐'.repeat(rating) + '☆'.repeat(5 - rating);
   };
 
-  const renderRating = ({ item }) => (
-    <View style={styles.ratingCard}>
-      <View style={styles.ratingHeader}>
-        <View style={styles.ratingHeaderLeft}>
-          <Text style={styles.placeTitle}>{item.placeTitle}</Text>
-          <Text style={styles.ratingDate}>
-            {new Date(item.createdAt).toLocaleDateString('tr-TR')}
-          </Text>
-        </View>
-        {renderStars(item.rating)}
-      </View>
-
-      {item.comment && (
-        <Text style={styles.comment}>{item.comment}</Text>
-      )}
-
-      {(item.categories.atmosphere > 0 ||
-        item.categories.service > 0 ||
-        item.categories.cleanliness > 0 ||
-        item.categories.price > 0) && (
-        <View style={styles.categoriesContainer}>
-          {item.categories.atmosphere > 0 && (
-            <View style={styles.categoryItem}>
-              <Text style={styles.categoryLabel}>Atmosfer</Text>
-              <Text style={styles.categoryValue}>{item.categories.atmosphere} ⭐</Text>
-            </View>
-          )}
-          {item.categories.service > 0 && (
-            <View style={styles.categoryItem}>
-              <Text style={styles.categoryLabel}>Hizmet</Text>
-              <Text style={styles.categoryValue}>{item.categories.service} ⭐</Text>
-            </View>
-          )}
-          {item.categories.cleanliness > 0 && (
-            <View style={styles.categoryItem}>
-              <Text style={styles.categoryLabel}>Temizlik</Text>
-              <Text style={styles.categoryValue}>{item.categories.cleanliness} ⭐</Text>
-            </View>
-          )}
-          {item.categories.price > 0 && (
-            <View style={styles.categoryItem}>
-              <Text style={styles.categoryLabel}>Fiyat</Text>
-              <Text style={styles.categoryValue}>{item.categories.price} ⭐</Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteRating(item.id)}
-      >
-        <Text style={styles.deleteButtonText}>🗑️ Sil</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.background,
-    },
-    header: {
-      backgroundColor: theme.cardBackground,
-      padding: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.border,
-    },
-    headerTitle: {
-      fontSize: 28,
-      fontWeight: 'bold',
-      color: theme.text,
-      marginBottom: 8,
-    },
-    headerSubtitle: {
-      fontSize: 16,
-      color: theme.textSecondary,
-    },
-    listContent: {
-      padding: 15,
-    },
-    ratingCard: {
-      backgroundColor: theme.cardBackground,
-      borderRadius: 16,
-      padding: 20,
-      marginBottom: 15,
-      shadowColor: theme.shadowColor,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 8,
-      elevation: 3,
-      borderWidth: 1,
-      borderColor: theme.border,
-    },
-    ratingHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 12,
-    },
-    ratingHeaderLeft: {
-      flex: 1,
-      marginRight: 12,
-    },
-    placeTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: theme.text,
-      marginBottom: 4,
-    },
-    ratingDate: {
-      fontSize: 13,
-      color: theme.textTertiary,
-    },
-    starsContainer: {
-      flexDirection: 'row',
-    },
-    star: {
-      fontSize: 18,
-    },
-    comment: {
-      fontSize: 15,
-      color: theme.textSecondary,
-      lineHeight: 22,
-      marginBottom: 12,
-    },
-    categoriesContainer: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-      marginBottom: 12,
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: theme.divider,
-    },
-    categoryItem: {
-      backgroundColor: theme.secondaryBackground,
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    categoryLabel: {
-      fontSize: 12,
-      color: theme.textSecondary,
-      marginRight: 6,
-    },
-    categoryValue: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: theme.text,
-    },
-    deleteButton: {
-      backgroundColor: theme.error + '15',
-      borderRadius: 8,
-      padding: 12,
-      alignItems: 'center',
-      marginTop: 8,
-      borderWidth: 1,
-      borderColor: theme.error + '30',
-    },
-    deleteButtonText: {
-      color: theme.error,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: 60,
-    },
-    emptyIcon: {
-      fontSize: 64,
-      marginBottom: 16,
-    },
-    emptyText: {
-      fontSize: 18,
-      color: theme.textSecondary,
-      textAlign: 'center',
-      fontWeight: '600',
-      marginBottom: 8,
-    },
-    emptySubtext: {
-      fontSize: 14,
-      color: theme.textTertiary,
-      textAlign: 'center',
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    loadingText: {
-      fontSize: 16,
-      color: theme.textSecondary,
-    },
-  });
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Değerlendirmeler yükleniyor...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('tr-TR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>⭐ Değerlendirmelerim</Text>
-        <Text style={styles.headerSubtitle}>
-          {myRatings.length} değerlendirme
-        </Text>
-      </View>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea}>
+        {/* Header */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Değerlendirmelerim</Text>
+          <View style={styles.headerRight} />
+        </Animated.View>
 
-      <FlatList
-        data={myRatings}
-        keyExtractor={(item) => item.id}
-        renderItem={renderRating}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📝</Text>
-            <Text style={styles.emptyText}>
-              Henüz değerlendirme yapmadınız
-            </Text>
-            <Text style={styles.emptySubtext}>
-              Ziyaret ettiğiniz mekanları değerlendirin
-            </Text>
-          </View>
-        }
-      />
-    </SafeAreaView>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Stats Section */}
+          <Animated.View
+            style={[
+              styles.statsSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.statCard}>
+              <View style={styles.statIconBox}>
+                <Text style={styles.statEmoji}>⭐</Text>
+              </View>
+              <Text style={styles.statValue}>{ratings.length}</Text>
+              <Text style={styles.statLabel}>Toplam</Text>
+            </View>
+            <View style={styles.statCard}>
+              <View style={styles.statIconBox}>
+                <Text style={styles.statEmoji}>📊</Text>
+              </View>
+              <Text style={styles.statValue}>
+                {ratings.length > 0
+                  ? (
+                    ratings.reduce((sum, r) => sum + r.rating, 0) /
+                    ratings.length
+                  ).toFixed(1)
+                  : '0'}
+              </Text>
+              <Text style={styles.statLabel}>Ortalama</Text>
+            </View>
+            <View style={styles.statCard}>
+              <View style={styles.statIconBox}>
+                <Text style={styles.statEmoji}>🏆</Text>
+              </View>
+              <Text style={styles.statValue}>
+                {ratings.filter((r) => r.rating === 5).length}
+              </Text>
+              <Text style={styles.statLabel}>5 Yıldız</Text>
+            </View>
+          </Animated.View>
+
+          {/* Ratings List */}
+          <Animated.View
+            style={[
+              styles.ratingsSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <Text style={styles.sectionTitle}>Tüm Değerlendirmeler</Text>
+
+            {loading ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyEmoji}>⏳</Text>
+                <Text style={styles.emptyText}>Yükleniyor...</Text>
+              </View>
+            ) : ratings.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyEmoji}>📝</Text>
+                <Text style={styles.emptyTitle}>Henüz değerlendirme yok</Text>
+                <Text style={styles.emptyText}>
+                  Mekanları ziyaret ettikten sonra değerlendirebilirsin
+                </Text>
+              </View>
+            ) : (
+              ratings.map((item, index) => (
+                <View key={index} style={styles.ratingCard}>
+                  <View style={styles.ratingHeader}>
+                    <View style={styles.placeIconBox}>
+                      <Text style={styles.placeEmoji}>📍</Text>
+                    </View>
+                    <View style={styles.placeInfo}>
+                      <Text style={styles.placeName}>
+                        {item.placeName || 'Mekan'}
+                      </Text>
+                      <Text style={styles.placeDate}>
+                        {formatDate(item.date)}
+                      </Text>
+                    </View>
+                    <View style={styles.ratingBadge}>
+                      <Text style={styles.ratingBadgeText}>{item.rating}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.starsText}>{renderStars(item.rating)}</Text>
+                  {item.comment && (
+                    <Text style={styles.commentText}>"{item.comment}"</Text>
+                  )}
+                </View>
+              ))
+            )}
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
-};
+}
 
-export default MyRatingsScreen;
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F5F2',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  backIcon: {
+    fontSize: 22,
+    color: '#1C1C1C',
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1C1C1C',
+  },
+  headerRight: {
+    width: 44,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  statsSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 28,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 4,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#F7F5F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statEmoji: {
+    fontSize: 20,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1C1C1C',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#7C7C7C',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  ratingsSection: {},
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1C1C1C',
+    marginBottom: 16,
+  },
+  ratingCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  ratingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  placeIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#F7F5F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  placeEmoji: {
+    fontSize: 20,
+  },
+  placeInfo: {
+    flex: 1,
+  },
+  placeName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1C1C1C',
+  },
+  placeDate: {
+    fontSize: 12,
+    color: '#7C7C7C',
+    marginTop: 2,
+  },
+  ratingBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#1C1C1C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ratingBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  starsText: {
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  commentText: {
+    fontSize: 14,
+    color: '#7C7C7C',
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#7C7C7C',
+    textAlign: 'center',
+  },
+});

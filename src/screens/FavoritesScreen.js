@@ -1,332 +1,349 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  FlatList,
   StyleSheet,
   TouchableOpacity,
-  Linking,
   SafeAreaView,
-  Alert,
+  ScrollView,
+  Animated,
+  StatusBar,
+  Dimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import { useTheme } from '../context/ThemeContext';
 
-const FAVORITES_KEY = '@favorites';
+const { width } = Dimensions.get('window');
 
-const FavoritesScreen = ({ navigation }) => {
-  const [favorites, setFavorites] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { theme } = useTheme();
+const SAMPLE_FAVORITES = [
+  { id: 1, name: 'Cafe Milano', category: 'Kafe', emoji: '☕', rating: 4.8, mood: '😊' },
+  { id: 2, name: 'Sunset Restaurant', category: 'Restoran', emoji: '🍽️', rating: 4.6, mood: '🥰' },
+  { id: 3, name: 'City Park', category: 'Park', emoji: '🌳', rating: 4.9, mood: '😌' },
+  { id: 4, name: 'Art Gallery', category: 'Müze', emoji: '🎨', rating: 4.7, mood: '🤔' },
+];
 
-  useFocusEffect(
-    useCallback(() => {
-      loadFavorites();
-    }, [])
-  );
+export default function FavoritesScreen({ navigation }) {
+  const [favorites, setFavorites] = useState(SAMPLE_FAVORITES);
+  const [activeFilter, setActiveFilter] = useState('all');
 
-  const loadFavorites = async () => {
-    try {
-      const favoritesJson = await AsyncStorage.getItem(FAVORITES_KEY);
-      if (favoritesJson) {
-        setFavorites(JSON.parse(favoritesJson));
-      }
-    } catch (error) {
-      console.error('Favoriler yüklenemedi:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  const handleRemoveFavorite = async (item) => {
-    Alert.alert(
-      'Favorilerden Çıkar',
-      `${item.title} favorilerden çıkarılsın mı?`,
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Çıkar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const updatedFavorites = favorites.filter(
-                fav => fav.title !== item.title
-              );
-              await AsyncStorage.setItem(
-                FAVORITES_KEY,
-                JSON.stringify(updatedFavorites)
-              );
-              setFavorites(updatedFavorites);
-            } catch (error) {
-              console.error('Favori çıkarılamadı:', error);
-              Alert.alert('Hata', 'Favori çıkarılırken bir hata oluştu');
-            }
-          },
-        },
-      ]
-    );
-  };
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
 
-  const handleOpenLink = (url) => {
-    if (url) {
-      Linking.openURL(url).catch((err) =>
-        console.error('Link açılamadı:', err)
-      );
-    }
-  };
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.background,
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    loadingText: {
-      fontSize: 16,
-      color: theme.textSecondary,
-    },
-    header: {
-      backgroundColor: theme.cardBackground,
-      padding: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.border,
-    },
-    headerTitle: {
-      fontSize: 28,
-      fontWeight: 'bold',
-      color: theme.text,
-      marginBottom: 8,
-    },
-    headerSubtitle: {
-      fontSize: 16,
-      color: theme.textSecondary,
-    },
-    listContent: {
-      padding: 15,
-      paddingBottom: 30,
-    },
-    card: {
-      backgroundColor: theme.cardBackground,
-      borderRadius: 16,
-      padding: 20,
-      marginBottom: 15,
-      shadowColor: theme.shadowColor,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 8,
-      elevation: 3,
-      borderWidth: 1,
-      borderColor: theme.border,
-    },
-    cardContent: {
-      marginBottom: 12,
-    },
-    cardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 12,
-    },
-    categoryIcon: {
-      fontSize: 36,
-      marginRight: 12,
-    },
-    headerText: {
-      flex: 1,
-    },
-    title: {
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: theme.text,
-      marginBottom: 4,
-    },
-    category: {
-      fontSize: 14,
-      color: theme.textTertiary,
-      textTransform: 'capitalize',
-    },
-    ratingButton: {
-      padding: 8,
-      marginLeft: 8,
-    },
-    ratingIcon: {
-      fontSize: 24,
-    },
-    description: {
-      fontSize: 15,
-      color: theme.textSecondary,
-      lineHeight: 22,
-      marginBottom: 12,
-    },
-    detailsContainer: {
-      marginTop: 8,
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: theme.divider,
-    },
-    detail: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginBottom: 6,
-      lineHeight: 20,
-    },
-    linkContainer: {
-      marginTop: 12,
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: theme.divider,
-    },
-    linkText: {
-      fontSize: 14,
-      color: theme.accent,
-      fontWeight: '600',
-    },
-    removeButton: {
-      backgroundColor: theme.error + '15',
-      borderRadius: 8,
-      padding: 12,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: theme.error + '30',
-    },
-    removeButtonText: {
-      color: theme.error,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: 60,
-      paddingHorizontal: 20,
-    },
-    emptyIcon: {
-      fontSize: 64,
-      marginBottom: 16,
-    },
-    emptyText: {
-      fontSize: 18,
-      color: theme.textSecondary,
-      textAlign: 'center',
-      fontWeight: '600',
-      marginBottom: 8,
-    },
-    emptySubtext: {
-      fontSize: 14,
-      color: theme.textTertiary,
-      textAlign: 'center',
-      marginBottom: 24,
-    },
-    exploreButton: {
-      backgroundColor: theme.accent,
-      paddingHorizontal: 32,
-      paddingVertical: 14,
-      borderRadius: 12,
-    },
-    exploreButtonText: {
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: 'bold',
-    },
-  });
-
-  const renderFavorite = ({ item }) => (
-    <View style={styles.card}>
-      <TouchableOpacity
-        style={styles.cardContent}
-        onPress={() => handleOpenLink(item.link)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.cardHeader}>
-          <Text style={styles.categoryIcon}>{item.icon}</Text>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>{item.title}</Text>
-            <Text style={styles.category}>{item.categoryLabel}</Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.ratingButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              navigation.navigate('Rating', { place: item });
-            }}
-          >
-            <Text style={styles.ratingIcon}>⭐</Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.description}>{item.description}</Text>
-        {item.details && item.details.length > 0 && (
-          <View style={styles.detailsContainer}>
-            {item.details.map((detail, index) => (
-              <Text key={index} style={styles.detail}>
-                {detail}
-              </Text>
-            ))}
-          </View>
-        )}
-        {item.link && (
-          <View style={styles.linkContainer}>
-            <Text style={styles.linkText}>📍 Google Maps'te Aç →</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.removeButton}
-        onPress={() => handleRemoveFavorite(item)}
-      >
-        <Text style={styles.removeButtonText}>🗑️ Çıkar</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Favoriler yükleniyor...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const filters = [
+    { id: 'all', label: 'Tümü' },
+    { id: 'cafe', label: 'Kafe' },
+    { id: 'restaurant', label: 'Restoran' },
+    { id: 'park', label: 'Park' },
+  ];
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>❤️ Favorilerim</Text>
-        <Text style={styles.headerSubtitle}>
-          {favorites.length} favori mekan
-        </Text>
-      </View>
-
-      <FlatList
-        data={favorites}
-        keyExtractor={(item, index) => `${item.title}-${index}`}
-        renderItem={renderFavorite}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>💔</Text>
-            <Text style={styles.emptyText}>Henüz favori eklemediniz</Text>
-            <Text style={styles.emptySubtext}>
-              Öneriler sayfasından beğendiğiniz mekanları favorilere ekleyin
-            </Text>
-            <TouchableOpacity
-              style={styles.exploreButton}
-              onPress={() => navigation.navigate('Home')}
-            >
-              <Text style={styles.exploreButtonText}>Keşfet ✨</Text>
-            </TouchableOpacity>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea}>
+        {/* Header */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Favorilerim</Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.countBadge}>{favorites.length}</Text>
           </View>
-        }
-      />
-    </SafeAreaView>
-  );
-};
+        </Animated.View>
 
-export default FavoritesScreen;
+        {/* Filters */}
+        <Animated.View
+          style={[
+            styles.filterContainer,
+            {
+              opacity: fadeAnim,
+            },
+          ]}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterScroll}
+          >
+            {filters.map((filter) => (
+              <TouchableOpacity
+                key={filter.id}
+                style={[
+                  styles.filterChip,
+                  activeFilter === filter.id && styles.filterChipActive,
+                ]}
+                onPress={() => setActiveFilter(filter.id)}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    activeFilter === filter.id && styles.filterTextActive,
+                  ]}
+                >
+                  {filter.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </Animated.View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Favorites List */}
+          <Animated.View
+            style={{
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            }}
+          >
+            {favorites.length > 0 ? (
+              favorites.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.favoriteCard}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.favoriteIconBox}>
+                    <Text style={styles.favoriteEmoji}>{item.emoji}</Text>
+                  </View>
+                  <View style={styles.favoriteInfo}>
+                    <Text style={styles.favoriteName}>{item.name}</Text>
+                    <Text style={styles.favoriteCategory}>{item.category}</Text>
+                  </View>
+                  <View style={styles.favoriteRight}>
+                    <View style={styles.ratingBox}>
+                      <Text style={styles.ratingStar}>⭐</Text>
+                      <Text style={styles.ratingText}>{item.rating}</Text>
+                    </View>
+                    <Text style={styles.moodEmoji}>{item.mood}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconBox}>
+                  <Text style={styles.emptyIcon}>❤️</Text>
+                </View>
+                <Text style={styles.emptyTitle}>Henüz favorin yok</Text>
+                <Text style={styles.emptySubtitle}>
+                  Beğendiğin mekanları favorilere ekle
+                </Text>
+              </View>
+            )}
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F5F2',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  backIcon: {
+    fontSize: 22,
+    color: '#1C1C1C',
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1C1C1C',
+  },
+  headerRight: {
+    width: 44,
+    alignItems: 'flex-end',
+  },
+  countBadge: {
+    backgroundColor: '#1C1C1C',
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+
+  // Filters
+  filterContainer: {
+    marginBottom: 16,
+  },
+  filterScroll: {
+    paddingHorizontal: 20,
+  },
+  filterChip: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    marginRight: 10,
+    borderWidth: 1.5,
+    borderColor: '#E5E2DD',
+  },
+  filterChipActive: {
+    backgroundColor: '#1C1C1C',
+    borderColor: '#1C1C1C',
+  },
+  filterText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#7C7C7C',
+  },
+  filterTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // Favorite Card
+  favoriteCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  favoriteIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#F7F5F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  favoriteEmoji: {
+    fontSize: 26,
+  },
+  favoriteInfo: {
+    flex: 1,
+  },
+  favoriteName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1C1C1C',
+    marginBottom: 4,
+  },
+  favoriteCategory: {
+    fontSize: 13,
+    color: '#7C7C7C',
+  },
+  favoriteRight: {
+    alignItems: 'flex-end',
+  },
+  ratingBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  ratingStar: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  ratingText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1C1C1C',
+  },
+  moodEmoji: {
+    fontSize: 18,
+  },
+
+  // Empty State
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  emptyIcon: {
+    fontSize: 36,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1C1C1C',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#7C7C7C',
+    textAlign: 'center',
+  },
+});

@@ -16,6 +16,10 @@ import RecommendationScreen from './src/screens/RecommendationScreen';
 import AmbientControlScreen from './src/screens/AmbientControlScreen';
 import FavoritesScreen from './src/screens/FavoritesScreen';
 import RatingScreen from './src/screens/RatingScreen';
+import FeedScreen from './src/screens/FeedScreen';
+
+
+
 
 // Yeni Ekranlar
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -74,6 +78,11 @@ function AppNavigator() {
           component={WelcomeScreen}
           options={{ headerShown: false }}
         />
+
+        <Stack.Screen
+          name="Feed" component={FeedScreen}
+        />
+
         <Stack.Screen
           name="Login"
           component={LoginScreen}

@@ -1,305 +1,464 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
-  TextInput,
   SafeAreaView,
-  Alert,
+  Animated,
+  TextInput,
+  StatusBar,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import { useTheme } from '../context/ThemeContext';
 
-const FRIENDS_KEY = '@friends';
+const SAMPLE_FRIENDS = [
+  { id: '1', name: 'Ayşe Kaya', avatar: '👩', mood: '😊', status: 'Mutlu', lastSeen: 'Şimdi aktif' },
+  { id: '2', name: 'Mehmet Yılmaz', avatar: '👨', mood: '⚡', status: 'Enerjik', lastSeen: '5 dk önce' },
+  { id: '3', name: 'Zeynep Ak', avatar: '👩‍🦰', mood: '😌', status: 'Sakin', lastSeen: '1 saat önce' },
+  { id: '4', name: 'Ali Demir', avatar: '👨‍🦱', mood: '🎉', status: 'Eğlenceli', lastSeen: '2 saat önce' },
+  { id: '5', name: 'Fatma Şen', avatar: '👩‍🦳', mood: '💭', status: 'Düşünceli', lastSeen: 'Dün' },
+];
 
-const FriendsScreen = ({ navigation }) => {
-  const [friends, setFriends] = useState([]);
+const FRIEND_REQUESTS = [
+  { id: '1', name: 'Cem Karaca', avatar: '👨‍🎤', mutualFriends: 5 },
+  { id: '2', name: 'Selin Yıldız', avatar: '👩‍💼', mutualFriends: 3 },
+];
+
+export default function FriendsScreen({ navigation }) {
+  const [activeTab, setActiveTab] = useState('friends');
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
-  const { theme } = useTheme();
+  const [friends, setFriends] = useState(SAMPLE_FRIENDS);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadUser();
-      loadFriends();
-    }, [])
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
+
+  const filteredFriends = friends.filter(friend =>
+    friend.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const loadUser = async () => {
-    try {
-      const userJson = await AsyncStorage.getItem('currentUser');
-      if (userJson) {
-        setCurrentUser(JSON.parse(userJson));
-      }
-    } catch (error) {
-      console.error('Kullanıcı yüklenemedi:', error);
-    }
-  };
-
-  const loadFriends = async () => {
-    try {
-      const friendsJson = await AsyncStorage.getItem(FRIENDS_KEY);
-      if (friendsJson) {
-        setFriends(JSON.parse(friendsJson));
-      }
-    } catch (error) {
-      console.error('Arkadaşlar yüklenemedi:', error);
-    }
-  };
-
-  const handleAddFriend = () => {
-    if (!searchQuery.trim()) {
-      Alert.alert('Hata', 'Lütfen bir kullanıcı adı girin');
-      return;
-    }
-
-    const newFriend = {
-      id: Date.now().toString(),
-      name: searchQuery,
-      status: 'online',
-      mutualFriends: Math.floor(Math.random() * 20),
-    };
-
-    const updatedFriends = [...friends, newFriend];
-    setFriends(updatedFriends);
-    AsyncStorage.setItem(FRIENDS_KEY, JSON.stringify(updatedFriends));
-    setSearchQuery('');
-    Alert.alert('Başarılı', `${searchQuery} arkadaş listenize eklendi!`);
-  };
-
-  const handleRemoveFriend = (friendId, friendName) => {
-    Alert.alert(
-      'Arkadaşı Çıkar',
-      `${friendName} arkadaş listenizden çıkarılsın mı?`,
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Çıkar',
-          style: 'destructive',
-          onPress: async () => {
-            const updatedFriends = friends.filter(f => f.id !== friendId);
-            setFriends(updatedFriends);
-            await AsyncStorage.setItem(FRIENDS_KEY, JSON.stringify(updatedFriends));
-          },
-        },
-      ]
-    );
-  };
-
-  const renderFriend = ({ item }) => (
-    <View style={styles.friendCard}>
-      <View style={styles.friendAvatar}>
-        <Text style={styles.friendAvatarText}>
-          {item.name.charAt(0).toUpperCase()}
-        </Text>
-        {item.status === 'online' && <View style={styles.onlineIndicator} />}
+  const renderFriendCard = (friend) => (
+    <TouchableOpacity key={friend.id} style={styles.friendCard}>
+      <View style={styles.avatarContainer}>
+        <View style={styles.avatarBox}>
+          <Text style={styles.avatarEmoji}>{friend.avatar}</Text>
+        </View>
+        <View style={styles.onlineIndicator} />
       </View>
       <View style={styles.friendInfo}>
-        <Text style={styles.friendName}>{item.name}</Text>
-        <Text style={styles.friendMutual}>
-          {item.mutualFriends} ortak arkadaş
-        </Text>
+        <Text style={styles.friendName}>{friend.name}</Text>
+        <View style={styles.statusRow}>
+          <Text style={styles.moodEmoji}>{friend.mood}</Text>
+          <Text style={styles.statusText}>{friend.status}</Text>
+          <Text style={styles.dotSeparator}>•</Text>
+          <Text style={styles.lastSeen}>{friend.lastSeen}</Text>
+        </View>
       </View>
-      <View style={styles.friendActions}>
-        <TouchableOpacity
-          style={styles.messageButton}
-          onPress={() => Alert.alert('Mesaj', `${item.name}'e mesaj gönder`)}
-        >
-          <Text style={styles.messageIcon}>💬</Text>
+      <TouchableOpacity style={styles.messageButton}>
+        <Text style={styles.messageIcon}>💬</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+
+  const renderRequestCard = (request) => (
+    <View key={request.id} style={styles.requestCard}>
+      <View style={styles.avatarBox}>
+        <Text style={styles.avatarEmoji}>{request.avatar}</Text>
+      </View>
+      <View style={styles.requestInfo}>
+        <Text style={styles.friendName}>{request.name}</Text>
+        <Text style={styles.mutualFriends}>{request.mutualFriends} ortak arkadaş</Text>
+      </View>
+      <View style={styles.requestActions}>
+        <TouchableOpacity style={styles.acceptButton}>
+          <Text style={styles.acceptText}>✓</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.removeButton}
-          onPress={() => handleRemoveFriend(item.id, item.name)}
-        >
-          <Text style={styles.removeIcon}>✕</Text>
+        <TouchableOpacity style={styles.declineButton}>
+          <Text style={styles.declineText}>✕</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.background,
-    },
-    header: {
-      backgroundColor: theme.cardBackground,
-      padding: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.border,
-    },
-    headerTitle: {
-      fontSize: 28,
-      fontWeight: 'bold',
-      color: theme.text,
-      marginBottom: 16,
-    },
-    searchContainer: {
-      flexDirection: 'row',
-      gap: 10,
-    },
-    searchInput: {
-      flex: 1,
-      backgroundColor: theme.inputBackground,
-      borderRadius: 12,
-      padding: 14,
-      fontSize: 16,
-      borderWidth: 1,
-      borderColor: theme.border,
-      color: theme.text,
-    },
-    addButton: {
-      backgroundColor: theme.primary,
-      borderRadius: 12,
-      paddingHorizontal: 20,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    addButtonText: {
-      color: '#fff',
-      fontSize: 24,
-      fontWeight: 'bold',
-    },
-    listContent: {
-      padding: 15,
-    },
-    friendCard: {
-      backgroundColor: theme.cardBackground,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      shadowColor: theme.shadowColor,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 8,
-      elevation: 3,
-      borderWidth: 1,
-      borderColor: theme.border,
-    },
-    friendAvatar: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: theme.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 16,
-      position: 'relative',
-    },
-    friendAvatarText: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: '#fff',
-    },
-    onlineIndicator: {
-      position: 'absolute',
-      bottom: 2,
-      right: 2,
-      width: 14,
-      height: 14,
-      borderRadius: 7,
-      backgroundColor: '#4CAF50',
-      borderWidth: 2,
-      borderColor: theme.cardBackground,
-    },
-    friendInfo: {
-      flex: 1,
-    },
-    friendName: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: theme.text,
-      marginBottom: 4,
-    },
-    friendMutual: {
-      fontSize: 14,
-      color: theme.textSecondary,
-    },
-    friendActions: {
-      flexDirection: 'row',
-      gap: 8,
-    },
-    messageButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: theme.primary + '20',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    messageIcon: {
-      fontSize: 20,
-    },
-    removeButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: theme.error + '20',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    removeIcon: {
-      fontSize: 20,
-      color: theme.error,
-      fontWeight: 'bold',
-    },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: 60,
-    },
-    emptyIcon: {
-      fontSize: 64,
-      marginBottom: 16,
-    },
-    emptyText: {
-      fontSize: 18,
-      color: theme.textSecondary,
-      textAlign: 'center',
-      fontWeight: '600',
-    },
-  });
-
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>👥 Arkadaşlarım</Text>
-        <View style={styles.searchContainer}>
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea}>
+        {/* Header */}
+        <Animated.View
+          style={[
+            styles.header,
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Arkadaşlar</Text>
+          <TouchableOpacity style={styles.addButton}>
+            <Text style={styles.addIcon}>+</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Search */}
+        <Animated.View
+          style={[
+            styles.searchContainer,
+            { opacity: fadeAnim }
+          ]}
+        >
+          <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Kullanıcı adı ara..."
-            placeholderTextColor={theme.placeholder}
+            placeholder="Arkadaş ara..."
+            placeholderTextColor="#A0A0A0"
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-          <TouchableOpacity style={styles.addButton} onPress={handleAddFriend}>
-            <Text style={styles.addButtonText}>+</Text>
+        </Animated.View>
+
+        {/* Tabs */}
+        <View style={styles.tabs}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'friends' && styles.tabActive]}
+            onPress={() => setActiveTab('friends')}
+          >
+            <Text style={[styles.tabText, activeTab === 'friends' && styles.tabTextActive]}>
+              Arkadaşlarım
+            </Text>
+            <View style={[styles.tabBadge, activeTab === 'friends' && styles.tabBadgeActive]}>
+              <Text style={[styles.tabBadgeText, activeTab === 'friends' && styles.tabBadgeTextActive]}>
+                {friends.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
+            onPress={() => setActiveTab('requests')}
+          >
+            <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
+              İstekler
+            </Text>
+            {FRIEND_REQUESTS.length > 0 && (
+              <View style={[styles.tabBadge, styles.tabBadgeNew]}>
+                <Text style={styles.tabBadgeTextNew}>{FRIEND_REQUESTS.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
-      </View>
 
-      <FlatList
-        data={friends}
-        keyExtractor={(item) => item.id}
-        renderItem={renderFriend}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>👋</Text>
-            <Text style={styles.emptyText}>
-              Henüz arkadaş eklemediniz
-            </Text>
-          </View>
-        }
-      />
-    </SafeAreaView>
+        {/* Content */}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {activeTab === 'friends' ? (
+            <>
+              <Text style={styles.sectionTitle}>Aktif Arkadaşlar</Text>
+              {filteredFriends.map(renderFriendCard)}
+            </>
+          ) : (
+            <>
+              <Text style={styles.sectionTitle}>Arkadaşlık İstekleri</Text>
+              {FRIEND_REQUESTS.map(renderRequestCard)}
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
-};
+}
 
-export default FriendsScreen;
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F5F2',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  backIcon: {
+    fontSize: 22,
+    color: '#1C1C1C',
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1C1C1C',
+  },
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#1C1C1C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addIcon: {
+    fontSize: 24,
+    color: '#FFFFFF',
+    fontWeight: '300',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  searchIcon: {
+    fontSize: 18,
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1C1C1C',
+  },
+  tabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginRight: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  tabActive: {
+    backgroundColor: '#1C1C1C',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#7C7C7C',
+  },
+  tabTextActive: {
+    color: '#FFFFFF',
+  },
+  tabBadge: {
+    marginLeft: 8,
+    backgroundColor: '#F0EEEB',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  tabBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  tabBadgeNew: {
+    backgroundColor: '#EF4444',
+  },
+  tabBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7C7C7C',
+  },
+  tabBadgeTextActive: {
+    color: '#FFFFFF',
+  },
+  tabBadgeTextNew: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#A0A0A0',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 16,
+  },
+  friendCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatarBox: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: '#F7F5F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarEmoji: {
+    fontSize: 26,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  friendInfo: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  friendName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 4,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  moodEmoji: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 13,
+    color: '#7C7C7C',
+  },
+  dotSeparator: {
+    fontSize: 13,
+    color: '#D0D0D0',
+    marginHorizontal: 6,
+  },
+  lastSeen: {
+    fontSize: 12,
+    color: '#A0A0A0',
+  },
+  messageButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F7F5F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageIcon: {
+    fontSize: 18,
+  },
+  requestCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  requestInfo: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  mutualFriends: {
+    fontSize: 13,
+    color: '#7C7C7C',
+    marginTop: 2,
+  },
+  requestActions: {
+    flexDirection: 'row',
+  },
+  acceptButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  acceptText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  declineButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F0EEEB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  declineText: {
+    fontSize: 18,
+    color: '#7C7C7C',
+    fontWeight: '600',
+  },
+});

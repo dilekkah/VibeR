@@ -1,12 +1,26 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const ThemeContext = createContext();
+// Default değerlerle context oluştur
+const ThemeContext = createContext({
+  isDarkMode: false,
+  toggleTheme: () => { },
+  theme: null,
+  isLoading: true,
+});
 
+// Güvenli useTheme hook - hata fırlatmaz
 export const useTheme = () => {
   const context = useContext(ThemeContext);
+  // Context yoksa default değerler döndür
   if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+    console.warn('useTheme: ThemeProvider bulunamadı, default değerler kullanılıyor');
+    return {
+      isDarkMode: false,
+      toggleTheme: () => { },
+      theme: lightTheme,
+      isLoading: false,
+    };
   }
   return context;
 };
@@ -48,14 +62,24 @@ export const lightTheme = {
   placeholder: '#999999',
   disabled: '#9CA3AF',
   overlay: 'rgba(0, 0, 0, 0.5)',
+
+  // Feed Screen için ek renkler
+  storyBorder: '#ef4444',
+  storyBorderViewed: '#cccccc',
+  likesText: '#1A1A1A',
+  tagBackground: '#f5f5f5',
+  tagText: '#ef4444',
+  ratingBackground: '#fbbf24',
+  priceText: '#4ade80',
+  categoryBadgeBg: 'rgba(0,0,0,0.7)',
 };
 
 // Dark Theme Colors
 export const darkTheme = {
   // Backgrounds
-  background: '#121212',
-  cardBackground: '#1E1E1E',
-  secondaryBackground: '#2C2C2C',
+  background: '#000000',
+  cardBackground: '#1A1A1A',
+  secondaryBackground: '#0A0A0A',
   inputBackground: '#2C2C2C',
 
   // Text
@@ -77,8 +101,8 @@ export const darkTheme = {
   warning: '#FFD60A',
 
   // Borders & Dividers
-  border: '#3A3A3A',
-  divider: '#2C2C2C',
+  border: '#333333',
+  divider: '#1A1A1A',
 
   // Shadows
   shadowColor: '#000000',
@@ -87,6 +111,16 @@ export const darkTheme = {
   placeholder: '#808080',
   disabled: '#6B6B6B',
   overlay: 'rgba(0, 0, 0, 0.7)',
+
+  // Feed Screen için ek renkler
+  storyBorder: '#ef4444',
+  storyBorderViewed: '#444444',
+  likesText: '#FFFFFF',
+  tagBackground: '#1a1a1a',
+  tagText: '#ef4444',
+  ratingBackground: '#fbbf24',
+  priceText: '#4ade80',
+  categoryBadgeBg: 'rgba(0,0,0,0.85)',
 };
 
 export const ThemeProvider = ({ children }) => {
@@ -136,3 +170,5 @@ export const ThemeProvider = ({ children }) => {
     </ThemeContext.Provider>
   );
 };
+
+export default ThemeContext;

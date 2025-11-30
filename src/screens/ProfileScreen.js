@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,470 +6,428 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
-  Image,
+  Animated,
   Alert,
-  TextInput,
+  StatusBar,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
-import { useTheme } from '../context/ThemeContext';
 
-const FAVORITES_KEY = '@favorites';
-const RATINGS_KEY = '@ratings';
+const MENU_ITEMS = [
+  { id: 1, emoji: '❤️', label: 'Favorilerim', screen: 'Favorites' },
+  { id: 2, emoji: '⭐', label: 'Değerlendirmelerim', screen: 'MyRatings' },
+  { id: 3, emoji: '👥', label: 'Arkadaşlarım', screen: 'Friends' },
+  { id: 4, emoji: '🗺️', label: 'Rotalarım', screen: 'RouteGenerator' },
+  { id: 5, emoji: '🔔', label: 'Bildirimler', screen: null },
+  { id: 6, emoji: '⚙️', label: 'Ayarlar', screen: null },
+];
 
-const ProfileScreen = ({ navigation }) => {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedName, setEditedName] = useState('');
-  const [profileImage, setProfileImage] = useState(null);
-  const [stats, setStats] = useState({
-    favorites: 0,
-    ratings: 0,
-    visits: 0,
-  });
-  const { theme } = useTheme();
+export default function ProfileScreen({ navigation }) {
+  const [user, setUser] = useState(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadUserProfile();
-      loadStats();
-    }, [])
-  );
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
-  const loadUserProfile = async () => {
+  useEffect(() => {
+    loadUser();
+
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
+
+  const loadUser = async () => {
     try {
       const userJson = await AsyncStorage.getItem('currentUser');
       if (userJson) {
-        const user = JSON.parse(userJson);
-        setCurrentUser(user);
-        setEditedName(user.name);
-        setProfileImage(user.profileImage || null);
+        setUser(JSON.parse(userJson));
       }
     } catch (error) {
-      console.error('Profil yüklenemedi:', error);
-    }
-  };
-
-  const loadStats = async () => {
-    try {
-      const favoritesJson = await AsyncStorage.getItem(FAVORITES_KEY);
-      const ratingsJson = await AsyncStorage.getItem(RATINGS_KEY);
-      const userJson = await AsyncStorage.getItem('currentUser');
-
-      const favorites = favoritesJson ? JSON.parse(favoritesJson) : [];
-      const ratings = ratingsJson ? JSON.parse(ratingsJson) : [];
-      const user = userJson ? JSON.parse(userJson) : null;
-
-      const userRatings = user
-        ? ratings.filter((r) => r.userId === user.id)
-        : [];
-
-      setStats({
-        favorites: favorites.length,
-        ratings: userRatings.length,
-        visits: userRatings.length + favorites.length,
-      });
-    } catch (error) {
-      console.error('İstatistikler yüklenemedi:', error);
-    }
-  };
-
-  const handleImagePick = () => {
-    Alert.alert(
-      'Profil Fotoğrafı',
-      'Fotoğraf nereden seçilsin?',
-      [
-        {
-          text: 'Kamera',
-          onPress: () => {
-            launchCamera(
-              {
-                mediaType: 'photo',
-                includeBase64: false,
-                maxHeight: 400,
-                maxWidth: 400,
-              },
-              (response) => {
-                if (response.assets && response.assets[0]) {
-                  handleImageResponse(response.assets[0].uri);
-                }
-              }
-            );
-          },
-        },
-        {
-          text: 'Galeri',
-          onPress: () => {
-            launchImageLibrary(
-              {
-                mediaType: 'photo',
-                includeBase64: false,
-                maxHeight: 400,
-                maxWidth: 400,
-              },
-              (response) => {
-                if (response.assets && response.assets[0]) {
-                  handleImageResponse(response.assets[0].uri);
-                }
-              }
-            );
-          },
-        },
-        { text: 'İptal', style: 'cancel' },
-      ]
-    );
-  };
-
-  const handleImageResponse = async (uri) => {
-    setProfileImage(uri);
-    try {
-      const userJson = await AsyncStorage.getItem('currentUser');
-      if (userJson) {
-        const user = JSON.parse(userJson);
-        user.profileImage = uri;
-        await AsyncStorage.setItem('currentUser', JSON.stringify(user));
-        setCurrentUser(user);
-      }
-    } catch (error) {
-      console.error('Profil fotoğrafı kaydedilemedi:', error);
-    }
-  };
-
-  const handleSaveProfile = async () => {
-    try {
-      const userJson = await AsyncStorage.getItem('currentUser');
-      if (userJson) {
-        const user = JSON.parse(userJson);
-        user.name = editedName;
-        await AsyncStorage.setItem('currentUser', JSON.stringify(user));
-        setCurrentUser(user);
-        setIsEditing(false);
-        Alert.alert('Başarılı', 'Profiliniz güncellendi!');
-      }
-    } catch (error) {
-      console.error('Profil güncellenemedi:', error);
-      Alert.alert('Hata', 'Profil güncellenirken bir hata oluştu');
+      console.error(error);
     }
   };
 
   const handleLogout = () => {
-    Alert.alert('Çıkış Yap', 'Çıkış yapmak istediğinizden emin misiniz?', [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Çıkış Yap',
-        style: 'destructive',
-        onPress: async () => {
-          try {
+    Alert.alert(
+      'Çıkış Yap',
+      'Hesabından çıkış yapmak istediğine emin misin?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Çıkış Yap',
+          style: 'destructive',
+          onPress: async () => {
             await AsyncStorage.removeItem('currentUser');
             navigation.replace('Welcome');
-          } catch (error) {
-            console.error('Çıkış hatası:', error);
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.background,
-    },
-    header: {
-      backgroundColor: theme.primary,
-      paddingTop: 40,
-      paddingBottom: 80,
-      alignItems: 'center',
-    },
-    profileImageContainer: {
-      position: 'relative',
-      marginBottom: 16,
-    },
-    profileImage: {
-      width: 120,
-      height: 120,
-      borderRadius: 60,
-      backgroundColor: theme.secondaryBackground,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 4,
-      borderColor: '#fff',
-    },
-    profileImagePlaceholder: {
-      fontSize: 48,
-    },
-    image: {
-      width: 120,
-      height: 120,
-      borderRadius: 60,
-    },
-    editImageButton: {
-      position: 'absolute',
-      bottom: 0,
-      right: 0,
-      backgroundColor: theme.accent,
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 3,
-      borderColor: '#fff',
-    },
-    editImageIcon: {
-      fontSize: 18,
-    },
-    nameContainer: {
-      alignItems: 'center',
-    },
-    name: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: '#fff',
-      marginBottom: 4,
-    },
-    nameInput: {
-      backgroundColor: 'rgba(255,255,255,0.9)',
-      borderRadius: 8,
-      padding: 10,
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: theme.text,
-      textAlign: 'center',
-      minWidth: 200,
-    },
-    email: {
-      fontSize: 14,
-      color: 'rgba(255,255,255,0.8)',
-    },
-    editButton: {
-      marginTop: 12,
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-      backgroundColor: 'rgba(255,255,255,0.2)',
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: '#fff',
-    },
-    editButtonText: {
-      color: '#fff',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    content: {
-      flex: 1,
-      marginTop: -40,
-    },
-    statsCard: {
-      backgroundColor: theme.cardBackground,
-      borderRadius: 20,
-      marginHorizontal: 20,
-      padding: 24,
-      shadowColor: theme.shadowColor,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.1,
-      shadowRadius: 12,
-      elevation: 5,
-      marginBottom: 20,
-    },
-    statsRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-    },
-    statItem: {
-      alignItems: 'center',
-    },
-    statValue: {
-      fontSize: 28,
-      fontWeight: 'bold',
-      color: theme.primary,
-      marginBottom: 4,
-    },
-    statLabel: {
-      fontSize: 14,
-      color: theme.textSecondary,
-    },
-    menuSection: {
-      paddingHorizontal: 20,
-    },
-    menuItem: {
-      backgroundColor: theme.cardBackground,
-      borderRadius: 12,
-      padding: 18,
-      marginBottom: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      shadowColor: theme.shadowColor,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 4,
-      elevation: 2,
-    },
-    menuIcon: {
-      fontSize: 24,
-      marginRight: 16,
-      width: 30,
-    },
-    menuText: {
-      flex: 1,
-      fontSize: 16,
-      fontWeight: '600',
-      color: theme.text,
-    },
-    menuArrow: {
-      fontSize: 18,
-      color: theme.textTertiary,
-    },
-    logoutButton: {
-      backgroundColor: theme.error + '15',
-      borderRadius: 12,
-      padding: 18,
-      marginTop: 20,
-      marginHorizontal: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: theme.error + '30',
-    },
-    logoutIcon: {
-      fontSize: 20,
-      marginRight: 12,
-    },
-    logoutText: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      color: theme.error,
-    },
-  });
+  const handleMenuPress = (item) => {
+    if (item.screen) {
+      navigation.navigate(item.screen);
+    } else {
+      Alert.alert('Yakında', 'Bu özellik yakında eklenecek');
+    }
+  };
 
-  if (!currentUser) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ fontSize: 18, color: theme.textSecondary }}>
-            Profil bilgileri yükleniyor...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const getInitials = () => {
+    if (!user?.name) return '?';
+    return user.name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={styles.profileImageContainer}>
-            <View style={styles.profileImage}>
-              {profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.image} />
-              ) : (
-                <Text style={styles.profileImagePlaceholder}>👤</Text>
-              )}
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Header */}
+          <Animated.View
+            style={[
+              styles.header,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Profil</Text>
+            <View style={styles.headerRight} />
+          </Animated.View>
+
+          {/* Profile Card */}
+          <Animated.View
+            style={[
+              styles.profileCard,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{getInitials()}</Text>
+              </View>
+              <TouchableOpacity style={styles.editAvatarButton}>
+                <Text style={styles.editAvatarIcon}>✏️</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.editImageButton}
-              onPress={handleImagePick}
-            >
-              <Text style={styles.editImageIcon}>📷</Text>
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.userName}>{user?.name || 'Kullanıcı'}</Text>
+            <Text style={styles.userEmail}>{user?.email || ''}</Text>
 
-          <View style={styles.nameContainer}>
-            {isEditing ? (
-              <TextInput
-                style={styles.nameInput}
-                value={editedName}
-                onChangeText={setEditedName}
-                autoFocus
-              />
-            ) : (
-              <Text style={styles.name}>{currentUser.name}</Text>
-            )}
-            <Text style={styles.email}>{currentUser.email}</Text>
-
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => {
-                if (isEditing) {
-                  handleSaveProfile();
-                } else {
-                  setIsEditing(true);
-                }
-              }}
-            >
-              <Text style={styles.editButtonText}>
-                {isEditing ? '✓ Kaydet' : '✎ Düzenle'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.content}>
-          <View style={styles.statsCard}>
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.favorites}</Text>
+                <Text style={styles.statNumber}>12</Text>
                 <Text style={styles.statLabel}>Favori</Text>
               </View>
+              <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.ratings}</Text>
+                <Text style={styles.statNumber}>8</Text>
                 <Text style={styles.statLabel}>Değerlendirme</Text>
               </View>
+              <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.visits}</Text>
-                <Text style={styles.statLabel}>Ziyaret</Text>
+                <Text style={styles.statNumber}>5</Text>
+                <Text style={styles.statLabel}>Arkadaş</Text>
               </View>
             </View>
-          </View>
+          </Animated.View>
 
-          <View style={styles.menuSection}>
+          {/* Menu Items */}
+          <Animated.View
+            style={[
+              styles.menuContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            {MENU_ITEMS.map((item, index) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.menuItem,
+                  index === MENU_ITEMS.length - 1 && styles.menuItemLast,
+                ]}
+                onPress={() => handleMenuPress(item)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuItemLeft}>
+                  <View style={styles.menuIconBox}>
+                    <Text style={styles.menuEmoji}>{item.emoji}</Text>
+                  </View>
+                  <Text style={styles.menuLabel}>{item.label}</Text>
+                </View>
+                <Text style={styles.menuArrow}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </Animated.View>
+
+          {/* Logout Button */}
+          <Animated.View
+            style={[
+              styles.logoutContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
             <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => navigation.navigate('Favorites')}
+              style={styles.logoutButton}
+              onPress={handleLogout}
+              activeOpacity={0.8}
             >
-              <Text style={styles.menuIcon}>❤️</Text>
-              <Text style={styles.menuText}>Favorilerim</Text>
-              <Text style={styles.menuArrow}>›</Text>
+              <Text style={styles.logoutEmoji}>🚪</Text>
+              <Text style={styles.logoutText}>Çıkış Yap</Text>
             </TouchableOpacity>
+          </Animated.View>
 
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => navigation.navigate('MyRatings')}
-            >
-              <Text style={styles.menuIcon}>⭐</Text>
-              <Text style={styles.menuText}>Değerlendirmelerim</Text>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => navigation.navigate('Friends')}
-            >
-              <Text style={styles.menuIcon}>👥</Text>
-              <Text style={styles.menuText}>Arkadaşlarım</Text>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => navigation.navigate('RouteGenerator')}
-            >
-              <Text style={styles.menuIcon}>🗺️</Text>
-              <Text style={styles.menuText}>Rota Oluştur</Text>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutIcon}>🚪</Text>
-            <Text style={styles.logoutText}>Çıkış Yap</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+          {/* Version */}
+          <Text style={styles.versionText}>MoodMap v1.0.0</Text>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
-};
+}
 
-export default ProfileScreen;
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F5F2',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  backIcon: {
+    fontSize: 22,
+    color: '#1C1C1C',
+    fontWeight: '600',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1C1C1C',
+  },
+  headerRight: {
+    width: 44,
+  },
+
+  // Profile Card
+  profileCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#1C1C1C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  editAvatarButton: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  editAvatarIcon: {
+    fontSize: 14,
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1C1C1C',
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#7C7C7C',
+    marginBottom: 20,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F0EEEB',
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1C1C1C',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#7C7C7C',
+    fontWeight: '500',
+  },
+  statDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#F0EEEB',
+  },
+
+  // Menu
+  menuContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EEEB',
+  },
+  menuItemLast: {
+    borderBottomWidth: 0,
+  },
+  menuItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F7F5F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  menuEmoji: {
+    fontSize: 20,
+  },
+  menuLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1C1C1C',
+  },
+  menuArrow: {
+    fontSize: 22,
+    color: '#C0C0C0',
+  },
+
+  // Logout
+  logoutContainer: {
+    marginBottom: 20,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEE2E2',
+    borderRadius: 16,
+    paddingVertical: 16,
+  },
+  logoutEmoji: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  logoutText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+
+  // Version
+  versionText: {
+    fontSize: 12,
+    color: '#A0A0A0',
+    textAlign: 'center',
+  },
+});

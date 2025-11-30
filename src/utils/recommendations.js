@@ -6805,3 +6805,4 @@ export const filterByCategory = (recommendations, category) => {
   }
   return recommendations.filter(rec => rec.category === category);
 };
+export { RECOMMENDATIONS_DATABASE };

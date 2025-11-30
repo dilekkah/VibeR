@@ -11,11 +11,12 @@ import {
   Alert,
   ScrollView,
   Animated,
+  Dimensions,
+  StatusBar,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '../context/ThemeContext';
-// LinearGradient kullanmıyoruz - isteğe bağlı
-// import { LinearGradient } from 'expo-linear-gradient';
+
+const { width } = Dimensions.get('window');
 
 export default function RegisterScreen({ navigation }) {
   const [name, setName] = useState('');
@@ -26,134 +27,86 @@ export default function RegisterScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [step, setStep] = useState(1);
-  const { theme } = useTheme();
+  const [focusedInput, setFocusedInput] = useState(null);
 
   // Animasyonlar
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const stepAnim = useRef(new Animated.Value(0)).current;
-  const buttonPressAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+  const formAnim = useRef(new Animated.Value(30)).current;
+  const buttonAnim = useRef(new Animated.Value(50)).current;
+  const progressAnim = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
-    // Sayfa açılış animasyonu
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 50,
+          friction: 10,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.spring(formAnim, {
         toValue: 0,
-        tension: 40,
-        friction: 8,
+        tension: 50,
+        friction: 10,
         useNativeDriver: true,
       }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 40,
-        friction: 8,
+      Animated.spring(buttonAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 10,
         useNativeDriver: true,
       }),
     ]).start();
   }, []);
 
   useEffect(() => {
-    // Progress bar animasyonu
     Animated.timing(progressAnim, {
       toValue: step === 1 ? 0.5 : 1,
-      duration: 400,
+      duration: 300,
       useNativeDriver: false,
     }).start();
-
-    // Adım geçiş animasyonu
-    Animated.sequence([
-      Animated.timing(stepAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.spring(stepAnim, {
-        toValue: 0,
-        tension: 40,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
   }, [step]);
 
-  const validateEmail = (email) => {
+  const validateEmail = (emailValue) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email);
+    return re.test(emailValue);
   };
 
   const handleNext = () => {
-    if (!name || !email) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+    if (!name.trim()) {
+      Alert.alert('Hata', 'Lütfen adınızı girin');
       return;
     }
-
-    if (!validateEmail(email)) {
+    if (!email.trim() || !validateEmail(email)) {
       Alert.alert('Hata', 'Geçerli bir e-posta adresi girin');
       return;
     }
-
-    // Buton press animasyonu
-    Animated.sequence([
-      Animated.timing(buttonPressAnim, {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(buttonPressAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setStep(2);
-    });
+    setStep(2);
   };
 
   const handleRegister = async () => {
-    if (!password || !confirmPassword) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
-      return;
-    }
-
-    if (password.length < 6) {
+    if (!password || password.length < 6) {
       Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
       return;
     }
-
     if (password !== confirmPassword) {
       Alert.alert('Hata', 'Şifreler eşleşmiyor');
       return;
     }
 
-    // Buton press animasyonu
-    Animated.sequence([
-      Animated.timing(buttonPressAnim, {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(buttonPressAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
     setLoading(true);
-
     try {
       const usersJson = await AsyncStorage.getItem('users');
       const users = usersJson ? JSON.parse(usersJson) : [];
 
-      const existingUser = users.find((u) => u.email === email);
-      if (existingUser) {
+      if (users.find((u) => u.email === email)) {
         Alert.alert('Hata', 'Bu e-posta adresi zaten kayıtlı');
         setLoading(false);
         return;
@@ -171,509 +124,539 @@ export default function RegisterScreen({ navigation }) {
       await AsyncStorage.setItem('users', JSON.stringify(users));
       await AsyncStorage.setItem('currentUser', JSON.stringify(newUser));
 
-      // Başarılı kayıt animasyonu
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1.1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        Alert.alert('Başarılı', 'Hesabınız oluşturuldu!', [
-          { text: 'Tamam', onPress: () => navigation.replace('Home') },
-        ]);
-      });
+      Alert.alert('Hoş Geldin! 🎉', `${name}, hesabın başarıyla oluşturuldu!`, [
+        { text: 'Başla', onPress: () => navigation.replace('Home') },
+      ]);
     } catch (error) {
-      Alert.alert('Hata', 'Bir hata oluştu');
-      console.error(error);
+      Alert.alert('Hata', 'Bir sorun oluştu');
     } finally {
       setLoading(false);
     }
   };
+
+  const getPasswordStrength = () => {
+    if (!password) return null;
+    if (password.length < 6) return { label: 'Zayıf', color: '#EF4444', widthPercent: '33%' };
+    if (password.length < 10) return { label: 'Orta', color: '#F59E0B', widthPercent: '66%' };
+    return { label: 'Güçlü', color: '#10B981', widthPercent: '100%' };
+  };
+
+  const strength = getPasswordStrength();
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.background,
-    },
-    keyboardView: {
-      flex: 1,
-    },
-    scrollContent: {
-      flexGrow: 1,
-    },
-    content: {
-      flex: 1,
-      padding: 24,
-      justifyContent: 'center',
-    },
-    progressContainer: {
-      position: 'absolute',
-      top: 60,
-      left: 24,
-      right: 24,
-      zIndex: 10,
-    },
-    progressBar: {
-      height: 4,
-      backgroundColor: theme.border,
-      borderRadius: 2,
-      overflow: 'hidden',
-    },
-    progressFill: {
-      height: '100%',
-      backgroundColor: theme.primary,
-      borderRadius: 2,
-    },
-    stepIndicator: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 12,
-    },
-    stepText: {
-      fontSize: 12,
-      color: theme.textSecondary,
-      fontWeight: '600',
-    },
-    stepTextActive: {
-      color: theme.primary,
-    },
-    header: {
-      alignItems: 'center',
-      marginBottom: 48,
-      marginTop: 80,
-    },
-    logoContainer: {
-      width: 100,
-      height: 100,
-      borderRadius: 50,
-      backgroundColor: theme.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 24,
-      shadowColor: theme.shadowColor || '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.3,
-      shadowRadius: 16,
-      elevation: 8,
-    },
-    logoText: {
-      fontSize: 48,
-      color: '#fff',
-    },
-    title: {
-      fontSize: 32,
-      fontWeight: '800',
-      color: theme.text,
-      marginBottom: 8,
-      letterSpacing: 0.5,
-    },
-    subtitle: {
-      fontSize: 16,
-      color: theme.textSecondary,
-      fontWeight: '500',
-      textAlign: 'center',
-    },
-    form: {
-      width: '100%',
-    },
-    inputContainer: {
-      marginBottom: 20,
-    },
-    label: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: theme.text,
-      marginBottom: 8,
-      marginLeft: 4,
-    },
-    inputWrapper: {
-      position: 'relative',
-    },
-    input: {
-      backgroundColor: theme.inputBackground,
-      borderRadius: 16,
-      padding: 18,
-      paddingRight: 50,
-      fontSize: 16,
-      borderWidth: 2,
-      borderColor: theme.border,
-      color: theme.text,
-      shadowColor: theme.shadowColor || '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.05,
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    inputFocused: {
-      borderColor: theme.primary,
-      shadowOpacity: 0.15,
-    },
-    eyeButton: {
-      position: 'absolute',
-      right: 16,
-      top: 18,
-    },
-    eyeIcon: {
-      fontSize: 24,
-    },
-    buttonRow: {
-      flexDirection: 'row',
-      gap: 12,
-      marginTop: 10,
-    },
-    backButton: {
-      flex: 1,
-      backgroundColor: theme.secondaryBackground,
-      borderRadius: 16,
-      padding: 20,
-      alignItems: 'center',
-      borderWidth: 2,
-      borderColor: theme.border,
-    },
-    backButtonText: {
-      color: theme.text,
-      fontSize: 18,
-      fontWeight: '700',
-    },
-    nextButton: {
-      flex: 2,
-      borderRadius: 16,
-      overflow: 'hidden',
-      shadowColor: theme.primary,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.3,
-      shadowRadius: 16,
-      elevation: 8,
-    },
-    nextButtonSolid: {
-      backgroundColor: theme.primary,
-      padding: 20,
-      alignItems: 'center',
-    },
-    registerButton: {
-      borderRadius: 16,
-      overflow: 'hidden',
-      shadowColor: theme.primary,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.3,
-      shadowRadius: 16,
-      elevation: 8,
-    },
-    registerButtonSolid: {
-      backgroundColor: theme.primary,
-      padding: 20,
-      alignItems: 'center',
-    },
-    gradientButton: {
-      padding: 20,
-      alignItems: 'center',
-      borderRadius: 16,
-    },
-    buttonText: {
-      color: '#fff',
-      fontSize: 18,
-      fontWeight: '700',
-      letterSpacing: 0.5,
-    },
-    loginPrompt: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 24,
-      padding: 16,
-      backgroundColor: theme.secondaryBackground,
-      borderRadius: 12,
-    },
-    loginPromptText: {
-      fontSize: 14,
-      color: theme.textSecondary,
-    },
-    loginLink: {
-      fontSize: 14,
-      color: theme.primary,
-      fontWeight: 'bold',
-    },
-    decorativeCircle: {
-      position: 'absolute',
-      width: 200,
-      height: 200,
-      borderRadius: 100,
-      backgroundColor: theme.primary,
-      opacity: 0.05,
-    },
-    circle1: {
-      top: -100,
-      right: -100,
-    },
-    circle2: {
-      bottom: -80,
-      left: -80,
-    },
-    passwordStrength: {
-      marginTop: 8,
-      marginLeft: 4,
-    },
-    strengthText: {
-      fontSize: 12,
-      fontWeight: '600',
-    },
-    strengthWeak: {
-      color: theme.error || '#EF4444',
-    },
-    strengthMedium: {
-      color: '#F59E0B',
-    },
-    strengthStrong: {
-      color: '#10B981',
-    },
-  });
-
-  const getPasswordStrength = () => {
-    if (password.length === 0) return null;
-    if (password.length < 6) return { text: 'Zayıf', style: styles.strengthWeak };
-    if (password.length < 10) return { text: 'Orta', style: styles.strengthMedium };
-    return { text: 'Güçlü', style: styles.strengthStrong };
-  };
-
-  const passwordStrength = getPasswordStrength();
-
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Dekoratif arka plan daireleri */}
-      <View style={[styles.decorativeCircle, styles.circle1]} />
-      <View style={[styles.decorativeCircle, styles.circle2]} />
-
-      {/* Progress Bar */}
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-          <Animated.View
-            style={[
-              styles.progressFill,
-              { width: progressWidth },
-            ]}
-          />
-        </View>
-        <View style={styles.stepIndicator}>
-          <Text style={[styles.stepText, step === 1 && styles.stepTextActive]}>
-            Kişisel Bilgiler
-          </Text>
-          <Text style={[styles.stepText, step === 2 && styles.stepTextActive]}>
-            Güvenlik
-          </Text>
-        </View>
-      </View>
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
         >
-          <Animated.View
-            style={[
-              styles.content,
-              {
-                opacity: fadeAnim,
-                transform: [
-                  { translateY: slideAnim },
-                  { scale: scaleAnim },
-                ],
-              },
-            ]}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.header}>
-              <Animated.View
-                style={[
-                  styles.logoContainer,
-                  {
-                    transform: [{ scale: scaleAnim }],
-                  },
-                ]}
-              >
-                <Text style={styles.logoText}>✨</Text>
-              </Animated.View>
-              <Text style={styles.title}>Hesap Oluştur</Text>
-              <Text style={styles.subtitle}>
-                {step === 1 ? 'Kendini tanıtalım' : 'Hesabını güvenli tut'}
-              </Text>
-            </View>
-
+            {/* Header */}
             <Animated.View
               style={[
-                styles.form,
+                styles.header,
                 {
-                  transform: [{ translateX: stepAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  })}],
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              {/* Back Button */}
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => (step === 1 ? navigation.goBack() : setStep(1))}
+              >
+                <Text style={styles.backIcon}>←</Text>
+              </TouchableOpacity>
+
+              {/* Progress */}
+              <View style={styles.progressContainer}>
+                <View style={styles.progressBar}>
+                  <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+                </View>
+                <View style={styles.progressLabels}>
+                  <Text style={[styles.progressLabel, step === 1 && styles.progressLabelActive]}>
+                    Bilgiler
+                  </Text>
+                  <Text style={[styles.progressLabel, step === 2 && styles.progressLabelActive]}>
+                    Güvenlik
+                  </Text>
+                </View>
+              </View>
+            </Animated.View>
+
+            {/* Title Section */}
+            <Animated.View
+              style={[
+                styles.titleSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              <View style={styles.iconBox}>
+                <Text style={styles.iconEmoji}>{step === 1 ? '👤' : '🔐'}</Text>
+              </View>
+              <Text style={styles.title}>
+                {step === 1 ? 'Hesap Oluştur' : 'Şifreni Belirle'}
+              </Text>
+              <Text style={styles.subtitle}>
+                {step === 1
+                  ? 'Seni tanıyalım, hemen başlayalım'
+                  : 'Hesabını güvende tutmak için güçlü bir şifre seç'}
+              </Text>
+            </Animated.View>
+
+            {/* Form */}
+            <Animated.View
+              style={[
+                styles.formContainer,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: formAnim }],
                 },
               ]}
             >
               {step === 1 ? (
-                <>
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Ad Soyad</Text>
-                    <View style={styles.inputWrapper}>
+                <View style={styles.form}>
+                  {/* Name Input */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Ad Soyad</Text>
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        focusedInput === 'name' && styles.inputWrapperFocused,
+                      ]}
+                    >
+                      <Text style={styles.inputIcon}>👤</Text>
                       <TextInput
-                        style={[styles.input, name && styles.inputFocused]}
-                        placeholder="Ahmet Yılmaz"
-                        placeholderTextColor={theme.placeholder}
+                        style={styles.input}
+                        placeholder="Adınız Soyadınız"
+                        placeholderTextColor="#A0A0A0"
                         value={name}
                         onChangeText={setName}
+                        onFocus={() => setFocusedInput('name')}
+                        onBlur={() => setFocusedInput(null)}
                         autoCapitalize="words"
                         autoCorrect={false}
-                        autoComplete="name"
-                        textContentType="name"
-                        spellCheck={false}
-                        smartQuotes={false}
-                        smartDashes={false}
                       />
+                      {name.length > 0 && <Text style={styles.checkIcon}>✓</Text>}
                     </View>
                   </View>
 
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.label}>E-posta</Text>
-                    <View style={styles.inputWrapper}>
+                  {/* Email Input */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>E-posta</Text>
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        focusedInput === 'email' && styles.inputWrapperFocused,
+                      ]}
+                    >
+                      <Text style={styles.inputIcon}>✉️</Text>
                       <TextInput
-                        style={[styles.input, email && styles.inputFocused]}
+                        style={styles.input}
                         placeholder="ornek@email.com"
-                        placeholderTextColor={theme.placeholder}
+                        placeholderTextColor="#A0A0A0"
                         value={email}
                         onChangeText={setEmail}
+                        onFocus={() => setFocusedInput('email')}
+                        onBlur={() => setFocusedInput(null)}
                         keyboardType="email-address"
                         autoCapitalize="none"
                         autoCorrect={false}
-                        autoComplete="email"
-                        textContentType="emailAddress"
-                        spellCheck={false}
-                        smartQuotes={false}
-                        smartDashes={false}
                       />
+                      {validateEmail(email) && <Text style={styles.checkIcon}>✓</Text>}
                     </View>
                   </View>
-
-                  <Animated.View style={{ transform: [{ scale: buttonPressAnim }] }}>
-                    <TouchableOpacity
-                      style={[styles.nextButton, styles.nextButtonSolid]}
-                      onPress={handleNext}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.buttonText}>İleri →</Text>
-                    </TouchableOpacity>
-                  </Animated.View>
-                </>
+                </View>
               ) : (
-                <>
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Şifre</Text>
-                    <View style={styles.inputWrapper}>
+                <View style={styles.form}>
+                  {/* Password Input */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Şifre</Text>
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        focusedInput === 'password' && styles.inputWrapperFocused,
+                      ]}
+                    >
+                      <Text style={styles.inputIcon}>🔒</Text>
                       <TextInput
-                        style={[styles.input, password && styles.inputFocused]}
+                        style={styles.input}
                         placeholder="En az 6 karakter"
-                        placeholderTextColor={theme.placeholder}
+                        placeholderTextColor="#A0A0A0"
                         value={password}
                         onChangeText={setPassword}
+                        onFocus={() => setFocusedInput('password')}
+                        onBlur={() => setFocusedInput(null)}
                         secureTextEntry={!showPassword}
                         autoCapitalize="none"
-                        autoCorrect={false}
-                        autoComplete="password-new"
-                        textContentType="newPassword"
-                        spellCheck={false}
-                        smartQuotes={false}
-                        smartDashes={false}
                       />
-                      <TouchableOpacity
-                        style={styles.eyeButton}
-                        onPress={() => setShowPassword(!showPassword)}
-                      >
-                        <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '🔒'}</Text>
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                        <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
                       </TouchableOpacity>
                     </View>
-                    {passwordStrength && (
-                      <View style={styles.passwordStrength}>
-                        <Text style={[styles.strengthText, passwordStrength.style]}>
-                          {passwordStrength.text}
+                    {/* Password Strength */}
+                    {strength && (
+                      <View style={styles.strengthContainer}>
+                        <View style={styles.strengthBar}>
+                          <View
+                            style={[
+                              styles.strengthFill,
+                              { width: strength.widthPercent, backgroundColor: strength.color },
+                            ]}
+                          />
+                        </View>
+                        <Text style={[styles.strengthLabel, { color: strength.color }]}>
+                          {strength.label}
                         </Text>
                       </View>
                     )}
                   </View>
 
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Şifre Tekrar</Text>
-                    <View style={styles.inputWrapper}>
+                  {/* Confirm Password Input */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Şifre Tekrar</Text>
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        focusedInput === 'confirm' && styles.inputWrapperFocused,
+                      ]}
+                    >
+                      <Text style={styles.inputIcon}>🔐</Text>
                       <TextInput
-                        style={[styles.input, confirmPassword && styles.inputFocused]}
+                        style={styles.input}
                         placeholder="Şifrenizi tekrar girin"
-                        placeholderTextColor={theme.placeholder}
+                        placeholderTextColor="#A0A0A0"
                         value={confirmPassword}
                         onChangeText={setConfirmPassword}
+                        onFocus={() => setFocusedInput('confirm')}
+                        onBlur={() => setFocusedInput(null)}
                         secureTextEntry={!showConfirmPassword}
                         autoCapitalize="none"
-                        autoCorrect={false}
-                        autoComplete="password-new"
-                        textContentType="newPassword"
-                        spellCheck={false}
-                        smartQuotes={false}
-                        smartDashes={false}
                       />
-                      <TouchableOpacity
-                        style={styles.eyeButton}
-                        onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                      >
-                        <Text style={styles.eyeIcon}>{showConfirmPassword ? '👁️' : '🔒'}</Text>
+                      <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                        <Text style={styles.eyeIcon}>{showConfirmPassword ? '👁️' : '👁️‍🗨️'}</Text>
                       </TouchableOpacity>
                     </View>
+                    {confirmPassword.length > 0 && password === confirmPassword && (
+                      <Text style={styles.matchText}>✓ Şifreler eşleşiyor</Text>
+                    )}
                   </View>
-
-                  <View style={styles.buttonRow}>
-                    <TouchableOpacity
-                      style={styles.backButton}
-                      onPress={() => setStep(1)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.backButtonText}>← Geri</Text>
-                    </TouchableOpacity>
-
-                    <Animated.View style={[{ flex: 2 }, { transform: [{ scale: buttonPressAnim }] }]}>
-                      <TouchableOpacity
-                        style={[styles.registerButton, styles.registerButtonSolid]}
-                        onPress={handleRegister}
-                        disabled={loading}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.buttonText}>
-                          {loading ? 'Oluşturuluyor...' : 'Hesap Oluştur'}
-                        </Text>
-                      </TouchableOpacity>
-                    </Animated.View>
-                  </View>
-                </>
+                </View>
               )}
+            </Animated.View>
 
+            {/* Bottom Section */}
+            <Animated.View
+              style={[
+                styles.bottomSection,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: buttonAnim }],
+                },
+              ]}
+            >
+              {/* Main Button */}
+              <TouchableOpacity
+                style={[styles.mainButton, loading && styles.mainButtonDisabled]}
+                onPress={step === 1 ? handleNext : handleRegister}
+                activeOpacity={0.85}
+                disabled={loading}
+              >
+                <Text style={styles.mainButtonText}>
+                  {loading ? 'Oluşturuluyor...' : step === 1 ? 'Devam Et' : 'Hesap Oluştur'}
+                </Text>
+                {!loading && <Text style={styles.buttonArrow}>→</Text>}
+              </TouchableOpacity>
+
+              {/* Login Link */}
               <View style={styles.loginPrompt}>
-                <Text style={styles.loginPromptText}>Zaten hesabın var mı? </Text>
+                <Text style={styles.loginPromptText}>Zaten hesabın var mı?</Text>
                 <TouchableOpacity onPress={() => navigation.navigate('Login')}>
                   <Text style={styles.loginLink}>Giriş Yap</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Terms */}
+              <Text style={styles.termsText}>
+                Devam ederek <Text style={styles.termsLink}>Kullanım Şartları</Text> ve{' '}
+                <Text style={styles.termsLink}>Gizlilik Politikası</Text>'nı kabul etmiş olursun.
+              </Text>
             </Animated.View>
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F5F2',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  backIcon: {
+    fontSize: 22,
+    color: '#1C1C1C',
+    fontWeight: '600',
+  },
+  progressContainer: {
+    flex: 1,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: '#E5E2DD',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#1C1C1C',
+    borderRadius: 2,
+  },
+  progressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  progressLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#A0A0A0',
+    letterSpacing: 0.5,
+  },
+  progressLabelActive: {
+    color: '#1C1C1C',
+  },
+
+  // Title Section
+  titleSection: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 32,
+  },
+  iconBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    backgroundColor: '#1C1C1C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  iconEmoji: {
+    fontSize: 32,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#1C1C1C',
+    letterSpacing: -0.5,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#7C7C7C',
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 20,
+  },
+
+  // Form
+  formContainer: {
+    flex: 1,
+  },
+  form: {},
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginLeft: 4,
+    marginBottom: 8,
+    letterSpacing: 0.3,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 2,
+    borderColor: '#F0EEEB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  inputWrapperFocused: {
+    borderColor: '#1C1C1C',
+    shadowOpacity: 0.08,
+  },
+  inputIcon: {
+    fontSize: 18,
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1C1C1C',
+    fontWeight: '500',
+  },
+  checkIcon: {
+    fontSize: 16,
+    color: '#10B981',
+    marginLeft: 8,
+  },
+  eyeIcon: {
+    fontSize: 18,
+    marginLeft: 8,
+  },
+
+  // Password Strength
+  strengthContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginLeft: 4,
+  },
+  strengthBar: {
+    flex: 1,
+    height: 4,
+    backgroundColor: '#E5E2DD',
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  strengthFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  matchText: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '600',
+    marginLeft: 4,
+    marginTop: 8,
+  },
+
+  // Bottom Section
+  bottomSection: {
+    marginTop: 32,
+  },
+  mainButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1C1C1C',
+    borderRadius: 16,
+    paddingVertical: 18,
+    shadowColor: '#1C1C1C',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  mainButtonDisabled: {
+    opacity: 0.7,
+  },
+  mainButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  buttonArrow: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '300',
+    marginLeft: 8,
+  },
+  loginPrompt: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginTop: 8,
+  },
+  loginPromptText: {
+    fontSize: 14,
+    color: '#7C7C7C',
+    marginRight: 6,
+  },
+  loginLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1C1C1C',
+  },
+  termsText: {
+    fontSize: 12,
+    color: '#A0A0A0',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 20,
+  },
+  termsLink: {
+    color: '#7C7C7C',
+    fontWeight: '600',
+  },
+});
