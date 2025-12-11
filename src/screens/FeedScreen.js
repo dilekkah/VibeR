@@ -11,59 +11,66 @@ import {
   StatusBar,
   Image,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
+import DatabaseService from '../services/DatabaseService';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
-const SAMPLE_POSTS = [
-  {
-    id: '1',
-    user: { name: 'Ayşe K.', avatar: '👩' },
-    mood: 'Mutlu',
-    moodEmoji: '😊',
-    place: 'Cafe Noir',
-    placeType: 'Kafe',
-    rating: 4.5,
-    comment: 'Harika bir atmosfer, kahveler mükemmel!',
-    image: null,
-    likes: 24,
-    time: '2 saat önce',
-  },
-  {
-    id: '2',
-    user: { name: 'Mehmet Y.', avatar: '👨' },
-    mood: 'Enerjik',
-    moodEmoji: '⚡',
-    place: 'FitLife Gym',
-    placeType: 'Spor Salonu',
-    rating: 5,
-    comment: 'Sabah antrenmanı için ideal!',
-    image: null,
-    likes: 18,
-    time: '4 saat önce',
-  },
-  {
-    id: '3',
-    user: { name: 'Zeynep A.', avatar: '👩‍🦰' },
-    mood: 'Romantik',
-    moodEmoji: '💕',
-    place: 'Sunset Restaurant',
-    placeType: 'Restoran',
-    rating: 4.8,
-    comment: 'Gün batımı manzarası muhteşem!',
-    image: null,
-    likes: 42,
-    time: '6 saat önce',
-  },
-];
-
 export default function FeedScreen({ navigation }) {
-  const [posts, setPosts] = useState(SAMPLE_POSTS);
+  const { user } = useAuth();
+  const [posts, setPosts] = useState([]);
+  const [users, setUsers] = useState({});
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [likedPosts, setLikedPosts] = useState([]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // Postları ve kullanıcıları yükle
+  const loadFeed = async () => {
+    try {
+      setLoading(true);
+
+      // AsyncStorage'dan kullanıcı postlarını getir
+      const storedPostsJson = await AsyncStorage.getItem('@feed_posts');
+      const storedPosts = storedPostsJson ? JSON.parse(storedPostsJson) : [];
+
+      // Tüm postları getir
+      const allPosts = await DatabaseService.getAllPosts();
+
+      // Kullanıcı bilgilerini getir
+      const allUsers = await DatabaseService.getAllUsers();
+      const usersMap = {};
+      allUsers.forEach(u => {
+        usersMap[u.id] = u;
+      });
+
+      // Kullanıcı bilgisini kullanıcı postlarına ekle
+      const enrichedStoredPosts = storedPosts.map(post => ({
+        ...post,
+        // Eğer kullanıcı bilgisi yoksa mevcut user bilgisini ekle
+        userName: post.userName || user?.name || 'Kullanıcı',
+        userAvatar: post.userAvatar || user?.avatar || '👤',
+      }));
+
+      // Tüm postları birleştir ve tarihe göre sırala
+      const combinedPosts = [...enrichedStoredPosts, ...allPosts].sort(
+        (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+      );
+
+      setUsers(usersMap);
+      setPosts(combinedPosts);
+      setLoading(false);
+    } catch (error) {
+      console.error('Feed yüklenemedi:', error);
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     Animated.parallel([
@@ -81,17 +88,31 @@ export default function FeedScreen({ navigation }) {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
-  const onRefresh = () => {
+  // Ekrana her dönüldüğünde postları yenile
+  useFocusEffect(
+    React.useCallback(() => {
+      loadFeed();
+    }, [user])
+  );
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1500);
+    await loadFeed();
+    setRefreshing(false);
   };
 
-  const toggleLike = (postId) => {
+  const toggleLike = async (postId) => {
+    if (!user) return;
+
+    // Optimistic update
     if (likedPosts.includes(postId)) {
       setLikedPosts(likedPosts.filter(id => id !== postId));
     } else {
       setLikedPosts([...likedPosts, postId]);
     }
+
+    // Database güncelle
+    await DatabaseService.toggleLikePost(postId, user.id);
   };
 
   const renderStars = (rating) => {
@@ -113,6 +134,27 @@ export default function FeedScreen({ navigation }) {
 
   const renderPost = (post, index) => {
     const isLiked = likedPosts.includes(post.id);
+    // Kullanıcı bilgisini users'dan al veya post'un kendi bilgisini kullan
+    const postUser = users[post.userId] || {
+      fullName: post.userName || 'Kullanıcı',
+      avatar: post.userAvatar || '👤',
+    };
+
+    if (!postUser) return null;
+
+    // Zaman farkını hesapla
+    const getTimeAgo = (dateString) => {
+      const now = new Date();
+      const postDate = new Date(dateString);
+      const diffMs = now - postDate;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 60) return `${diffMins} dakika önce`;
+      if (diffHours < 24) return `${diffHours} saat önce`;
+      return `${diffDays} gün önce`;
+    };
 
     return (
       <Animated.View
@@ -129,11 +171,11 @@ export default function FeedScreen({ navigation }) {
         <View style={styles.postHeader}>
           <View style={styles.userInfo}>
             <View style={styles.avatarBox}>
-              <Text style={styles.avatarEmoji}>{post.user.avatar}</Text>
+              <Text style={styles.avatarEmoji}>{postUser.avatar || '👤'}</Text>
             </View>
             <View>
-              <Text style={styles.userName}>{post.user.name}</Text>
-              <Text style={styles.postTime}>{post.time}</Text>
+              <Text style={styles.userName}>{postUser.fullName}</Text>
+              <Text style={styles.postTime}>{getTimeAgo(post.createdAt)}</Text>
             </View>
           </View>
           <View style={styles.moodBadge}>
@@ -159,6 +201,15 @@ export default function FeedScreen({ navigation }) {
           <Text style={styles.arrowIcon}>›</Text>
         </TouchableOpacity>
 
+        {/* Photo */}
+        {post.photo && (
+          <Image
+            source={{ uri: post.photo }}
+            style={styles.postImage}
+            resizeMode="cover"
+          />
+        )}
+
         {/* Comment */}
         <Text style={styles.comment}>{post.comment}</Text>
 
@@ -172,7 +223,7 @@ export default function FeedScreen({ navigation }) {
               {isLiked ? '❤️' : '🤍'}
             </Text>
             <Text style={[styles.actionText, isLiked && styles.actionTextActive]}>
-              {post.likes + (isLiked ? 1 : 0)}
+              {(post.likes?.length || 0) + (isLiked ? 1 : 0)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
@@ -207,6 +258,12 @@ export default function FeedScreen({ navigation }) {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Keşfet</Text>
           <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.createPostButton}
+              onPress={() => navigation.navigate('CreatePost')}
+            >
+              <Text style={styles.createPostIcon}>+</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.headerButton}>
               <Text style={styles.headerButtonIcon}>🔔</Text>
             </TouchableOpacity>
@@ -242,7 +299,20 @@ export default function FeedScreen({ navigation }) {
             />
           }
         >
-          {posts.map((post, index) => renderPost(post, index))}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#1C1C1C" />
+              <Text style={styles.loadingText}>Yükleniyor...</Text>
+            </View>
+          ) : posts.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyIcon}>📝</Text>
+              <Text style={styles.emptyTitle}>Henüz gönderi yok</Text>
+              <Text style={styles.emptyText}>İlk gönderiyi paylaşan sen ol!</Text>
+            </View>
+          ) : (
+            posts.map((post, index) => renderPost(post, index))
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -290,6 +360,25 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
+  },
+  createPostButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#5E17EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    shadowColor: '#5E17EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  createPostIcon: {
+    fontSize: 28,
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   headerButton: {
     width: 44,
@@ -455,6 +544,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: '#A0A0A0',
   },
+  postImage: {
+    width: '100%',
+    height: 280,
+    borderRadius: 12,
+    marginBottom: 12,
+    backgroundColor: '#F5F5F5',
+  },
   comment: {
     fontSize: 14,
     color: '#4A4A4A',
@@ -486,5 +582,38 @@ const styles = StyleSheet.create({
   },
   actionTextActive: {
     color: '#EF4444',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#7C7C7C',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#7C7C7C',
+    textAlign: 'center',
   },
 });

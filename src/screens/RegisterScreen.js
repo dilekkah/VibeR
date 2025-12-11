@@ -14,12 +14,15 @@ import {
   Dimensions,
   StatusBar,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function RegisterScreen({ navigation }) {
-  const [name, setName] = useState('');
+  const { register } = useAuth();
+
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -80,8 +83,12 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleNext = () => {
-    if (!name.trim()) {
+    if (!fullName.trim()) {
       Alert.alert('Hata', 'Lütfen adınızı girin');
+      return;
+    }
+    if (!username.trim()) {
+      Alert.alert('Hata', 'Lütfen kullanıcı adınızı girin');
       return;
     }
     if (!email.trim() || !validateEmail(email)) {
@@ -92,43 +99,46 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleRegister = async () => {
+    if (!fullName || !username || !email || !password) {
+      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert('Hata', 'Geçerli bir e-posta adresi girin');
+      return;
+    }
+
     if (!password || password.length < 6) {
       Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
       return;
     }
+
     if (password !== confirmPassword) {
       Alert.alert('Hata', 'Şifreler eşleşmiyor');
       return;
     }
 
     setLoading(true);
+
     try {
-      const usersJson = await AsyncStorage.getItem('users');
-      const users = usersJson ? JSON.parse(usersJson) : [];
-
-      if (users.find((u) => u.email === email)) {
-        Alert.alert('Hata', 'Bu e-posta adresi zaten kayıtlı');
-        setLoading(false);
-        return;
-      }
-
-      const newUser = {
-        id: Date.now().toString(),
-        name,
+      const result = await register({
+        fullName,
+        username,
         email,
         password,
-        createdAt: new Date().toISOString(),
-      };
+      });
 
-      users.push(newUser);
-      await AsyncStorage.setItem('users', JSON.stringify(users));
-      await AsyncStorage.setItem('currentUser', JSON.stringify(newUser));
-
-      Alert.alert('Hoş Geldin! 🎉', `${name}, hesabın başarıyla oluşturuldu!`, [
-        { text: 'Başla', onPress: () => navigation.replace('Home') },
-      ]);
+      if (result.success) {
+        Alert.alert('Hoş Geldin! 🎉', `${fullName}, hesabın başarıyla oluşturuldu!`, [
+          { text: 'Başla' }, // Navigation otomatik olarak yapılacak
+        ]);
+      } else {
+        Alert.alert('Hata', result.error || 'Kayıt başarısız');
+      }
     } catch (error) {
       Alert.alert('Hata', 'Bir sorun oluştu');
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -236,7 +246,7 @@ export default function RegisterScreen({ navigation }) {
                     <View
                       style={[
                         styles.inputWrapper,
-                        focusedInput === 'name' && styles.inputWrapperFocused,
+                        focusedInput === 'fullName' && styles.inputWrapperFocused,
                       ]}
                     >
                       <Text style={styles.inputIcon}>👤</Text>
@@ -244,14 +254,39 @@ export default function RegisterScreen({ navigation }) {
                         style={styles.input}
                         placeholder="Adınız Soyadınız"
                         placeholderTextColor="#A0A0A0"
-                        value={name}
-                        onChangeText={setName}
-                        onFocus={() => setFocusedInput('name')}
+                        value={fullName}
+                        onChangeText={setFullName}
+                        onFocus={() => setFocusedInput('fullName')}
                         onBlur={() => setFocusedInput(null)}
                         autoCapitalize="words"
                         autoCorrect={false}
                       />
-                      {name.length > 0 && <Text style={styles.checkIcon}>✓</Text>}
+                      {fullName.length > 0 && <Text style={styles.checkIcon}>✓</Text>}
+                    </View>
+                  </View>
+
+                  {/* Username Input */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Kullanıcı Adı</Text>
+                    <View
+                      style={[
+                        styles.inputWrapper,
+                        focusedInput === 'username' && styles.inputWrapperFocused,
+                      ]}
+                    >
+                      <Text style={styles.inputIcon}>@</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="kullaniciadi"
+                        placeholderTextColor="#A0A0A0"
+                        value={username}
+                        onChangeText={setUsername}
+                        onFocus={() => setFocusedInput('username')}
+                        onBlur={() => setFocusedInput(null)}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {username.length > 0 && <Text style={styles.checkIcon}>✓</Text>}
                     </View>
                   </View>
 

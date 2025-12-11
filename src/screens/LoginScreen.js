@@ -14,7 +14,7 @@ import {
   Dimensions,
   StatusBar,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -38,8 +38,10 @@ const MINI_GRID = [
 ];
 
 export default function LoginScreen({ navigation }) {
+  const { login } = useAuth();
+
   // Tüm useState'ler en üstte ve koşulsuz olmalı
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -112,31 +114,21 @@ export default function LoginScreen({ navigation }) {
   };
 
   const handleLogin = async () => {
-    if (!email || !password) {
+    if (!username || !password) {
       Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      Alert.alert('Hata', 'Geçerli bir e-posta adresi girin');
       return;
     }
 
     setLoading(true);
 
     try {
-      const usersJson = await AsyncStorage.getItem('users');
-      const users = usersJson ? JSON.parse(usersJson) : [];
+      const result = await login(username, password);
 
-      const user = users.find(
-        (u) => u.email === email && u.password === password
-      );
-
-      if (user) {
-        await AsyncStorage.setItem('currentUser', JSON.stringify(user));
-        navigation.replace('Home');
+      if (result.success) {
+        // Navigation artık AuthContext tarafından yönetiliyor
+        // Kullanıcı oturumu açıldığında otomatik olarak Home'a yönlenecek
       } else {
-        Alert.alert('Hata', 'E-posta veya şifre hatalı');
+        Alert.alert('Hata', result.error || 'Giriş başarısız');
       }
     } catch (error) {
       Alert.alert('Hata', 'Bir hata oluştu');
@@ -268,29 +260,25 @@ export default function LoginScreen({ navigation }) {
               ]}
             >
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>E-posta</Text>
+                <Text style={styles.inputLabel}>Kullanıcı Adı</Text>
                 <View
                   style={[
                     styles.inputWrapper,
-                    focusedInput === 'email' && styles.inputWrapperFocused,
+                    focusedInput === 'username' && styles.inputWrapperFocused,
                   ]}
                 >
-                  <Text style={styles.inputIcon}>✉️</Text>
+                  <Text style={styles.inputIcon}>👤</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="ornek@email.com"
+                    placeholder="kullaniciadi"
                     placeholderTextColor="#A0A0A0"
-                    value={email}
-                    onChangeText={setEmail}
-                    onFocus={() => setFocusedInput('email')}
+                    value={username}
+                    onChangeText={setUsername}
+                    onFocus={() => setFocusedInput('username')}
                     onBlur={() => setFocusedInput(null)}
-                    keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
-                  {validateEmail(email) && (
-                    <Text style={styles.checkIcon}>✓</Text>
-                  )}
                 </View>
               </View>
 

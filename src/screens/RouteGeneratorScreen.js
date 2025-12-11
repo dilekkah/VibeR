@@ -11,8 +11,12 @@ import {
   StatusBar,
   Dimensions,
   ActivityIndicator,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import GooglePlacesService from '../services/GooglePlacesService';
+import { GOOGLE_PLACES_API_KEY } from '@env';
 
 const { width } = Dimensions.get('window');
 
@@ -46,6 +50,11 @@ export default function RouteGeneratorScreen({ navigation }) {
   const [generating, setGenerating] = useState(false);
   const [showRoute, setShowRoute] = useState(false);
   const [generatedRoute, setGeneratedRoute] = useState(null);
+
+  // Yeni state'ler - Konum girişi için
+  const [startLocation, setStartLocation] = useState('');
+  const [endLocation, setEndLocation] = useState('');
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
 
   // Animasyonlar
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -81,24 +90,54 @@ export default function RouteGeneratorScreen({ navigation }) {
       return;
     }
 
+    if (!useCurrentLocation && (!startLocation.trim() || !endLocation.trim())) {
+      Alert.alert('Uyarı', 'Lütfen başlangıç ve bitiş noktalarını girin');
+      return;
+    }
+
     setGenerating(true);
 
     try {
-      // Kullanıcının konumunu al
-      const userLocation = await GooglePlacesService.getCurrentLocation();
-      console.log('📍 Kullanıcı konumu:', userLocation);
+      let startCoords, endCoords;
 
-      // Google Places ile gerçek mekanları bul
-      const realPlaces = await GooglePlacesService.findRouteStops(
-        userLocation.latitude,
-        userLocation.longitude,
+      if (useCurrentLocation) {
+        // Mevcut konumu kullan
+        const userLocation = await GooglePlacesService.getCurrentLocation();
+        startCoords = userLocation;
+        endCoords = userLocation; // Circular route
+        console.log('📍 Mevcut konum kullanılıyor:', userLocation);
+      } else {
+        // Girilen konumları geocode et
+        console.log('🔍 Konumlar aranıyor:', { startLocation, endLocation });
+
+        startCoords = await geocodeLocation(startLocation);
+
+        if (!startCoords) {
+          setGenerating(false);
+          return;
+        }
+
+        endCoords = await geocodeLocation(endLocation);
+
+        if (!endCoords) {
+          setGenerating(false);
+          return;
+        }
+
+        console.log('✅ Konumlar bulundu:', { startCoords, endCoords });
+      }
+
+      // Rota üzerindeki ara noktalarda mekanları bul
+      const routePlaces = await findPlacesAlongRoute(
+        startCoords,
+        endCoords,
         selectedActivities,
         duration
       );
 
-      console.log(`✅ ${realPlaces.length} gerçek mekan bulundu`);
+      console.log(`✅ ${routePlaces.length} mekan bulundu`);
 
-      if (realPlaces.length === 0) {
+      if (routePlaces.length === 0) {
         // API key yoksa veya sonuç bulunamadıysa mock data kullan
         console.log('ℹ️ Gerçek mekan bulunamadı, örnek veriler kullanılıyor');
         const mockRoute = {
@@ -128,12 +167,12 @@ export default function RouteGeneratorScreen({ navigation }) {
           activities: selectedActivities,
           transport,
           isReal: true,
-          stops: realPlaces.map((place, index) => {
+          stops: routePlaces.map((place, index) => {
             const activity = ACTIVITY_TYPES.find(a =>
               selectedActivities.includes(a.id)
             ) || ACTIVITY_TYPES[index % ACTIVITY_TYPES.length];
 
-            const timePerStop = Math.floor(duration / realPlaces.length);
+            const timePerStop = Math.floor(duration / routePlaces.length);
             const startHour = 9 + (index * timePerStop);
 
             return {
@@ -162,6 +201,160 @@ export default function RouteGeneratorScreen({ navigation }) {
       setGenerating(false);
       Alert.alert('Hata', 'Rota oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.');
     }
+  };
+
+  // Fallback koordinatlar - API çalışmadığında
+  const getFallbackCoordinates = (locationName) => {
+    const locations = {
+      'taksim': { latitude: 41.0369, longitude: 28.9850, name: 'Taksim' },
+      'taksim meydanı': { latitude: 41.0369, longitude: 28.9850, name: 'Taksim Meydanı' },
+      'kadıköy': { latitude: 40.9909, longitude: 29.0265, name: 'Kadıköy' },
+      'kadıköy iskelesi': { latitude: 40.9909, longitude: 29.0265, name: 'Kadıköy İskelesi' },
+      'beşiktaş': { latitude: 41.0426, longitude: 29.0073, name: 'Beşiktaş' },
+      'beşiktaş çarşı': { latitude: 41.0426, longitude: 29.0073, name: 'Beşiktaş Çarşı' },
+      'fatih': { latitude: 41.0192, longitude: 28.9496, name: 'Fatih' },
+      'sultanahmet': { latitude: 41.0054, longitude: 28.9768, name: 'Sultanahmet' },
+      'şişli': { latitude: 41.0602, longitude: 28.9874, name: 'Şişli' },
+      'bakırköy': { latitude: 40.9800, longitude: 28.8731, name: 'Bakırköy' },
+      'üsküdar': { latitude: 41.0224, longitude: 29.0138, name: 'Üsküdar' },
+      'beyoğlu': { latitude: 41.0351, longitude: 28.9788, name: 'Beyoğlu' },
+      'galata': { latitude: 41.0259, longitude: 28.9740, name: 'Galata' },
+      'ortaköy': { latitude: 41.0555, longitude: 29.0264, name: 'Ortaköy' },
+      'bebek': { latitude: 41.0781, longitude: 29.0417, name: 'Bebek' },
+    };
+
+    const searchKey = locationName.toLowerCase().trim()
+      .replace(/,.*$/, '') // "Taksim, İstanbul" -> "Taksim"
+      .replace(/\s+istanbul$/i, ''); // "Taksim Istanbul" -> "Taksim"
+
+    // Tam eşleşme ara
+    if (locations[searchKey]) {
+      return locations[searchKey];
+    }
+
+    // Kısmi eşleşme ara
+    for (const [key, value] of Object.entries(locations)) {
+      if (searchKey.includes(key) || key.includes(searchKey)) {
+        return value;
+      }
+    }
+
+    return null;
+  };
+
+  // Geocoding fonksiyonu - Adres → Koordinat
+  // Google Places Find Place (Text Search) kullanarak
+  const geocodeLocation = async (address) => {
+    try {
+      // API key'i direkt kullan
+      const apiKey = GOOGLE_PLACES_API_KEY || 'AIzaSyDCVXj6k7qDLPADwpvH3Sw_WQsMTYvlG_I';
+
+      if (!apiKey) {
+        console.warn('⚠️ Google Places API key bulunamadı');
+        Alert.alert('Uyarı', 'API key yapılandırılmamış');
+        return null;
+      }
+
+      console.log(`🔍 Konum aranıyor: "${address}"`);
+
+      // Places API - Find Place kullan (Geocoding API yerine)
+      const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(address)}&inputtype=textquery&fields=geometry,name,formatted_address&key=${apiKey}`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      console.log(`📡 Places API yanıt:`, {
+        status: data.status,
+        candidates: data.candidates?.length || 0,
+      });
+
+      if (data.status === 'OK' && data.candidates && data.candidates.length > 0) {
+        const place = data.candidates[0];
+        const coords = {
+          latitude: place.geometry.location.lat,
+          longitude: place.geometry.location.lng,
+        };
+        console.log(`✅ Konum bulundu: ${place.name}`, coords);
+        return coords;
+      } else if (data.status === 'ZERO_RESULTS') {
+        Alert.alert(
+          'Konum Bulunamadı',
+          `"${address}" için sonuç bulunamadı.\n\nÖrnek: "Taksim, İstanbul" veya "Kadıköy İskelesi"`
+        );
+        return null;
+      } else if (data.status === 'REQUEST_DENIED') {
+        console.error('API Hatası:', data.error_message);
+
+        // Fallback: Bilinen şehir isimlerini koordinatlara çevir
+        const fallbackCoords = getFallbackCoordinates(address);
+        if (fallbackCoords) {
+          console.log(`✅ Fallback koordinat kullanıldı: ${address}`, fallbackCoords);
+          return fallbackCoords;
+        }
+
+        Alert.alert(
+          'API Kısıtlaması',
+          'Google Cloud Console\'da "Places API" ve "Geocoding API" aktif değil.\n\nŞimdilik mevcut konumunuzu kullanın veya bilinen şehir isimlerini deneyin:\n• Taksim\n• Kadıköy\n• Beşiktaş'
+        );
+        return null;
+      } else {
+        console.error('Places API hatası:', data.status, data.error_message);
+        Alert.alert('Hata', 'Konum aranırken hata oluştu');
+        return null;
+      }
+    } catch (error) {
+      console.error('Konum arama hatası:', error);
+      Alert.alert('Hata', 'Ağ bağlantısı hatası');
+      return null;
+    }
+  };
+
+  // Rota üzerinde mekanları bul
+  const findPlacesAlongRoute = async (start, end, activities, duration) => {
+    const allPlaces = [];
+
+    // Başlangıç ve bitiş arasındaki mesafeyi hesapla
+    const distance = GooglePlacesService.calculateDistance(
+      start.latitude,
+      start.longitude,
+      end.latitude,
+      end.longitude
+    );
+
+    console.log(`📏 Rota mesafesi: ${distance.toFixed(2)} km`);
+
+    // Rota boyunca ara noktalar oluştur (her aktivite için)
+    const numStops = activities.length;
+    const placesPerStop = Math.max(1, Math.floor(duration / numStops));
+
+    for (let i = 0; i < numStops; i++) {
+      // Rota boyunca eşit aralıklarla nokta belirle
+      const ratio = (i + 1) / (numStops + 1);
+      const waypoint = {
+        latitude: start.latitude + (end.latitude - start.latitude) * ratio,
+        longitude: start.longitude + (end.longitude - start.longitude) * ratio,
+      };
+
+      console.log(`🎯 Ara nokta ${i + 1}:`, waypoint);
+
+      // Bu noktada mekanları ara
+      const activityType = activities[i];
+      const radius = distance < 5 ? 1000 : distance < 10 ? 2000 : 3000;
+
+      const places = await GooglePlacesService.searchNearbyPlaces(
+        waypoint.latitude,
+        waypoint.longitude,
+        activityType,
+        radius
+      );
+
+      if (places.length > 0) {
+        // En iyi mekanları ekle
+        allPlaces.push(...places.slice(0, placesPerStop));
+      }
+    }
+
+    return allPlaces;
   };
 
   // Eğer rota oluşturulduysa göster
@@ -279,6 +472,94 @@ export default function RouteGeneratorScreen({ navigation }) {
             <Text style={styles.heroSubtitle}>
               Tercihlerine göre özelleştirilmiş bir gün planı oluşturalım
             </Text>
+          </Animated.View>
+
+          {/* Location Section */}
+          <Animated.View
+            style={[
+              styles.section,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <Text style={styles.sectionTitle}>Rota Konumu</Text>
+            <Text style={styles.sectionSubtitle}>Nereden nereye gidiyorsun?</Text>
+
+            {/* Toggle: Mevcut Konum / Özel Konum */}
+            <View style={styles.locationToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.locationToggleButton,
+                  useCurrentLocation && styles.locationToggleButtonActive,
+                ]}
+                onPress={() => setUseCurrentLocation(true)}
+              >
+                <Text
+                  style={[
+                    styles.locationToggleText,
+                    useCurrentLocation && styles.locationToggleTextActive,
+                  ]}
+                >
+                  📍 Mevcut Konumum
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.locationToggleButton,
+                  !useCurrentLocation && styles.locationToggleButtonActive,
+                ]}
+                onPress={() => setUseCurrentLocation(false)}
+              >
+                <Text
+                  style={[
+                    styles.locationToggleText,
+                    !useCurrentLocation && styles.locationToggleTextActive,
+                  ]}
+                >
+                  🎯 Özel Rota
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Özel Konum Girişi */}
+            {!useCurrentLocation && (
+              <View style={styles.locationInputs}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>🚀 Başlangıç</Text>
+                  <TextInput
+                    style={styles.locationInput}
+                    placeholder="Örn: Taksim, İstanbul"
+                    placeholderTextColor="#A0A0A0"
+                    value={startLocation}
+                    onChangeText={setStartLocation}
+                  />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>🏁 Bitiş</Text>
+                  <TextInput
+                    style={styles.locationInput}
+                    placeholder="Örn: Kadıköy, İstanbul"
+                    placeholderTextColor="#A0A0A0"
+                    value={endLocation}
+                    onChangeText={setEndLocation}
+                  />
+                </View>
+                <View style={styles.routeInfoBox}>
+                  <Text style={styles.routeInfoIcon}>💡</Text>
+                  <Text style={styles.routeInfoText}>
+                    Başlangıç ve bitiş noktaları arasında en iyi rotayı oluşturacağız!
+                  </Text>
+                </View>
+                <View style={styles.exampleBox}>
+                  <Text style={styles.exampleTitle}>Örnek Adresler:</Text>
+                  <Text style={styles.exampleText}>• Taksim Meydanı, İstanbul</Text>
+                  <Text style={styles.exampleText}>• Kadıköy İskelesi, İstanbul</Text>
+                  <Text style={styles.exampleText}>• Beşiktaş Çarşı, İstanbul</Text>
+                </View>
+              </View>
+            )}
           </Animated.View>
 
           {/* Duration Section */}
@@ -821,5 +1102,90 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  locationToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#F0EEEB',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  locationToggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  locationToggleButtonActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  locationToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#7C7C7C',
+  },
+  locationToggleTextActive: {
+    color: '#1C1C1C',
+  },
+  locationInputs: {
+    gap: 12,
+  },
+  inputGroup: {
+    marginBottom: 8,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 8,
+  },
+  locationInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 15,
+    color: '#1C1C1C',
+    borderWidth: 2,
+    borderColor: '#F0EEEB',
+  },
+  routeInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+  },
+  routeInfoIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  routeInfoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1976D2',
+    lineHeight: 18,
+  },
+  exampleBox: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+  },
+  exampleTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
+  exampleText: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 2,
   },
 });

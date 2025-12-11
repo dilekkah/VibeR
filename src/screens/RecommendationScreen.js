@@ -103,7 +103,13 @@ export default function RecommendationScreen({ route, navigation }) {
     // Konum al
     getUserLocation();
 
-    loadRecommendations(uniqueMoods, uniqueCompanions, uniqueNeeds);
+    // Önce konum al, sonra önerileri yükle
+    const initializeRecommendations = async () => {
+      const location = await getUserLocation();
+      await loadRecommendations(uniqueMoods, uniqueCompanions, uniqueNeeds, location);
+    };
+
+    initializeRecommendations();
 
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -129,7 +135,7 @@ export default function RecommendationScreen({ route, navigation }) {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         console.log('⚠️ Konum izni verilmedi');
-        return;
+        return null;
       }
 
       const location = await Location.getCurrentPositionAsync({
@@ -143,22 +149,25 @@ export default function RecommendationScreen({ route, navigation }) {
 
       setUserLocation(coords);
       console.log('📍 Kullanıcı konumu alındı:', coords);
+      return coords;
     } catch (error) {
       console.error('❌ Konum alınamadı:', error);
+      return null;
     }
   };
 
-  const loadRecommendations = async (moodFilters = [], companionFilters = [], needFilters = []) => {
+  const loadRecommendations = async (moodFilters = [], companionFilters = [], needFilters = [], location = null) => {
     setLoading(true);
 
     try {
       let results = [];
+      const currentLocation = location || userLocation;
 
       console.log('🔍 Filtreler uygulanıyor:', {
         moodFilters,
         companionFilters,
         needFilters,
-        hasLocation: !!userLocation,
+        hasLocation: !!currentLocation,
       });
 
       // 🌍 UNIFIED SERVICE: Google Places + Local Data
@@ -169,7 +178,7 @@ export default function RecommendationScreen({ route, navigation }) {
           moods: moodFilters,
           companions: companionFilters,
           needs: needFilters,
-        }, userLocation);
+        }, currentLocation);
 
         console.log(`✅ Unified Service: ${results.length} sonuç (Google + Local)`);
 
@@ -184,13 +193,13 @@ export default function RecommendationScreen({ route, navigation }) {
         }
       }
 
-      // Hala sonuç yoksa rastgele öneriler
+      // Hala sonuç yoksa rastgele öneriler (max 20)
       if (results.length === 0) {
         console.log('📚 Rastgele öneriler getiriliyor...');
-        results = await UnifiedPlacesService.getRandomRecommendations(50, userLocation);
+        results = await UnifiedPlacesService.getRandomRecommendations(20, currentLocation);
 
         if (results.length === 0) {
-          results = LocalRecommendationService.getRandomRecommendations(50);
+          results = LocalRecommendationService.getRandomRecommendations(20);
         }
       }
 
@@ -204,8 +213,8 @@ export default function RecommendationScreen({ route, navigation }) {
       console.log('Toplam yüklenen öneri:', results.length);
     } catch (error) {
       console.error('Öneri yükleme hatası:', error);
-      // Hata durumunda rastgele öneriler göster
-      const fallback = LocalRecommendationService.getRandomRecommendations(30);
+      // Hata durumunda rastgele öneriler göster (max 20)
+      const fallback = LocalRecommendationService.getRandomRecommendations(20);
       setRecommendations(fallback);
       setFilteredRecommendations(fallback);
     } finally {
@@ -376,7 +385,15 @@ export default function RecommendationScreen({ route, navigation }) {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.actionButtonPrimary}
-          onPress={() => navigation.navigate('Rating', { place: item })}
+          onPress={() => {
+            // Aktif filtrelerdeki ilk mood'u al
+            const activeMood = activeFilters.moods[0];
+            navigation.navigate('Rating', {
+              place: item,
+              mood: activeMood?.label,
+              moodEmoji: activeMood?.emoji,
+            });
+          }}
         >
           <Text style={styles.actionIconPrimary}>⭐</Text>
           <Text style={styles.actionTextPrimary}>Değerlendir</Text>

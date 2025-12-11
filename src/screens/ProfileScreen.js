@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   StatusBar,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 const MENU_ITEMS = [
   { id: 1, emoji: '❤️', label: 'Favorilerim', screen: 'Favorites' },
@@ -22,14 +24,43 @@ const MENU_ITEMS = [
 ];
 
 export default function ProfileScreen({ navigation }) {
-  const [user, setUser] = useState(null);
+  const { user, logout } = useAuth();
+  const [stats, setStats] = useState({
+    favorites: 0,
+    ratings: 0,
+    friends: 0,
+  });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
-  useEffect(() => {
-    loadUser();
+  // İstatistikleri yükle
+  const loadStats = async () => {
+    try {
+      // Favorileri say
+      const favoritesJson = await AsyncStorage.getItem('@favorites');
+      const favorites = favoritesJson ? JSON.parse(favoritesJson) : [];
 
+      // Değerlendirmeleri say (feed posts)
+      const postsJson = await AsyncStorage.getItem('@feed_posts');
+      const posts = postsJson ? JSON.parse(postsJson) : [];
+      const userPosts = posts.filter(p => p.userId === user?.id);
+
+      // Arkadaşları say (şimdilik 0, arkadaş sistemi eklendiğinde güncellenecek)
+      const friendsJson = await AsyncStorage.getItem('@friends');
+      const friends = friendsJson ? JSON.parse(friendsJson) : [];
+
+      setStats({
+        favorites: favorites.length,
+        ratings: userPosts.length,
+        friends: friends.length,
+      });
+    } catch (error) {
+      console.error('İstatistikler yüklenemedi:', error);
+    }
+  };
+
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -45,16 +76,12 @@ export default function ProfileScreen({ navigation }) {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
-  const loadUser = async () => {
-    try {
-      const userJson = await AsyncStorage.getItem('currentUser');
-      if (userJson) {
-        setUser(JSON.parse(userJson));
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
+  // Ekrana her dönüldüğünde istatistikleri yenile
+  useFocusEffect(
+    React.useCallback(() => {
+      loadStats();
+    }, [user])
+  );
 
   const handleLogout = () => {
     Alert.alert(
@@ -65,8 +92,8 @@ export default function ProfileScreen({ navigation }) {
         {
           text: 'Çıkış Yap',
           style: 'destructive',
-          onPress: async () => {
-            await AsyncStorage.removeItem('currentUser');
+          onPress: () => {
+            logout();
             navigation.replace('Welcome');
           },
         },
@@ -143,17 +170,17 @@ export default function ProfileScreen({ navigation }) {
 
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>12</Text>
+                <Text style={styles.statNumber}>{stats.favorites}</Text>
                 <Text style={styles.statLabel}>Favori</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>8</Text>
+                <Text style={styles.statNumber}>{stats.ratings}</Text>
                 <Text style={styles.statLabel}>Değerlendirme</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>5</Text>
+                <Text style={styles.statNumber}>{stats.friends}</Text>
                 <Text style={styles.statLabel}>Arkadaş</Text>
               </View>
             </View>

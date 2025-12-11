@@ -11,8 +11,11 @@ import {
   Alert,
   StatusBar,
   Dimensions,
+  Switch,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
+import DatabaseService from '../services/DatabaseService';
 
 const { width } = Dimensions.get('window');
 
@@ -32,13 +35,15 @@ const ASPECTS = [
 ];
 
 export default function RatingScreen({ route, navigation }) {
-  const { place } = route.params || {};
+  const { place, mood, moodEmoji } = route.params || {};
+  const { user } = useAuth();
 
   const [overallRating, setOverallRating] = useState(0);
   const [aspectRatings, setAspectRatings] = useState({});
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(false);
+  const [shareToFeed, setShareToFeed] = useState(true);
 
   // Animasyonlar
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -91,8 +96,14 @@ export default function RatingScreen({ route, navigation }) {
       return;
     }
 
+    if (!comment.trim()) {
+      Alert.alert('Uyarı', 'Lütfen bir yorum yazın');
+      return;
+    }
+
     setLoading(true);
     try {
+      // Değerlendirmeyi kaydet
       const ratingsJson = await AsyncStorage.getItem('userRatings');
       const ratings = ratingsJson ? JSON.parse(ratingsJson) : [];
 
@@ -110,12 +121,28 @@ export default function RatingScreen({ route, navigation }) {
       ratings.push(newRating);
       await AsyncStorage.setItem('userRatings', JSON.stringify(ratings));
 
+      // Eğer feed'e paylaş seçiliyse post oluştur
+      if (shareToFeed && user) {
+        const postData = {
+          userId: user.id,
+          mood: mood || 'Mutlu',
+          moodEmoji: moodEmoji || '😊',
+          place: place?.name || 'Bilinmeyen Mekan',
+          placeType: place?.category || 'Mekan',
+          rating: overallRating,
+          comment: comment,
+        };
+
+        await DatabaseService.createPost(postData);
+      }
+
       Alert.alert(
         'Teşekkürler! 🎉',
-        'Değerlendirmen başarıyla kaydedildi',
+        shareToFeed ? 'Değerlendirmen kaydedildi ve feed\'e paylaşıldı!' : 'Değerlendirmen başarıyla kaydedildi',
         [{ text: 'Tamam', onPress: () => navigation.goBack() }]
       );
     } catch (error) {
+      console.error('Rating submit error:', error);
       Alert.alert('Hata', 'Değerlendirme kaydedilemedi');
     } finally {
       setLoading(false);
@@ -282,6 +309,24 @@ export default function RatingScreen({ route, navigation }) {
                 multiline
                 numberOfLines={4}
                 textAlignVertical="top"
+              />
+            </View>
+
+            {/* Share to Feed Toggle */}
+            <View style={styles.shareToggleRow}>
+              <View style={styles.shareToggleInfo}>
+                <Text style={styles.shareToggleIcon}>📢</Text>
+                <View>
+                  <Text style={styles.shareToggleTitle}>Feed'e Paylaş</Text>
+                  <Text style={styles.shareToggleSubtitle}>Arkadaşların görsün</Text>
+                </View>
+              </View>
+              <Switch
+                value={shareToFeed}
+                onValueChange={setShareToFeed}
+                trackColor={{ false: '#D0D0D0', true: '#A8E6CF' }}
+                thumbColor={shareToFeed ? '#4CAF50' : '#f4f3f4'}
+                ios_backgroundColor="#D0D0D0"
               />
             </View>
           </Animated.View>
@@ -495,6 +540,36 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1C1C1C',
     lineHeight: 22,
+  },
+  shareToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F0EEEB',
+  },
+  shareToggleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  shareToggleIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  shareToggleTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 2,
+  },
+  shareToggleSubtitle: {
+    fontSize: 12,
+    color: '#7C7C7C',
   },
   bottomSection: {
     position: 'absolute',

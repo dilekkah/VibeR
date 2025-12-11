@@ -9,30 +9,56 @@ import {
   Animated,
   TextInput,
   StatusBar,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-
-const SAMPLE_FRIENDS = [
-  { id: '1', name: 'Ayşe Kaya', avatar: '👩', mood: '😊', status: 'Mutlu', lastSeen: 'Şimdi aktif' },
-  { id: '2', name: 'Mehmet Yılmaz', avatar: '👨', mood: '⚡', status: 'Enerjik', lastSeen: '5 dk önce' },
-  { id: '3', name: 'Zeynep Ak', avatar: '👩‍🦰', mood: '😌', status: 'Sakin', lastSeen: '1 saat önce' },
-  { id: '4', name: 'Ali Demir', avatar: '👨‍🦱', mood: '🎉', status: 'Eğlenceli', lastSeen: '2 saat önce' },
-  { id: '5', name: 'Fatma Şen', avatar: '👩‍🦳', mood: '💭', status: 'Düşünceli', lastSeen: 'Dün' },
-];
-
-const FRIEND_REQUESTS = [
-  { id: '1', name: 'Cem Karaca', avatar: '👨‍🎤', mutualFriends: 5 },
-  { id: '2', name: 'Selin Yıldız', avatar: '👩‍💼', mutualFriends: 3 },
-];
+import { useAuth } from '../context/AuthContext';
+import DatabaseService from '../services/DatabaseService';
 
 export default function FriendsScreen({ navigation }) {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('friends');
   const [searchQuery, setSearchQuery] = useState('');
-  const [friends, setFriends] = useState(SAMPLE_FRIENDS);
+  const [friends, setFriends] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // Arkadaşları ve kullanıcıları yükle
+  const loadFriends = async () => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+
+      // Arkadaş ID'lerini al
+      const friendIds = await DatabaseService.getFriends(user.id);
+
+      // Tüm kullanıcıları al
+      const users = await DatabaseService.getAllUsers();
+
+      // Arkadaşları filtrele
+      const friendUsers = users.filter(u => friendIds.includes(u.id));
+
+      // Arkadaş olmayanları bul (kendisi hariç)
+      const nonFriends = users.filter(u =>
+        u.id !== user.id && !friendIds.includes(u.id)
+      );
+
+      setFriends(friendUsers);
+      setAllUsers(nonFriends);
+      setLoading(false);
+    } catch (error) {
+      console.error('Arkadaşlar yüklenemedi:', error);
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
+    loadFriends();
+
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -48,25 +74,41 @@ export default function FriendsScreen({ navigation }) {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
+  const handleAddFriend = async (friendId) => {
+    if (!user) return;
+
+    const result = await DatabaseService.addFriend(user.id, friendId);
+    if (result.success) {
+      Alert.alert('Başarılı! 🎉', 'Arkadaş eklendi');
+      loadFriends(); // Listeyi yenile
+    } else {
+      Alert.alert('Hata', 'Arkadaş eklenemedi');
+    }
+  };
+
   const filteredFriends = friends.filter(friend =>
-    friend.name.toLowerCase().includes(searchQuery.toLowerCase())
+    friend?.fullName?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredUsers = allUsers.filter(u =>
+    u?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u?.username?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const renderFriendCard = (friend) => (
     <TouchableOpacity key={friend.id} style={styles.friendCard}>
       <View style={styles.avatarContainer}>
         <View style={styles.avatarBox}>
-          <Text style={styles.avatarEmoji}>{friend.avatar}</Text>
+          <Text style={styles.avatarEmoji}>{friend.avatar || '👤'}</Text>
         </View>
         <View style={styles.onlineIndicator} />
       </View>
       <View style={styles.friendInfo}>
-        <Text style={styles.friendName}>{friend.name}</Text>
+        <Text style={styles.friendName}>{friend.fullName}</Text>
         <View style={styles.statusRow}>
-          <Text style={styles.moodEmoji}>{friend.mood}</Text>
-          <Text style={styles.statusText}>{friend.status}</Text>
+          <Text style={styles.statusText}>@{friend.username}</Text>
           <Text style={styles.dotSeparator}>•</Text>
-          <Text style={styles.lastSeen}>{friend.lastSeen}</Text>
+          <Text style={styles.lastSeen}>{friend.friends?.length || 0} arkadaş</Text>
         </View>
       </View>
       <TouchableOpacity style={styles.messageButton}>
@@ -75,21 +117,21 @@ export default function FriendsScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  const renderRequestCard = (request) => (
-    <View key={request.id} style={styles.requestCard}>
+  const renderUserCard = (u) => (
+    <View key={u.id} style={styles.requestCard}>
       <View style={styles.avatarBox}>
-        <Text style={styles.avatarEmoji}>{request.avatar}</Text>
+        <Text style={styles.avatarEmoji}>{u.avatar || '👤'}</Text>
       </View>
       <View style={styles.requestInfo}>
-        <Text style={styles.friendName}>{request.name}</Text>
-        <Text style={styles.mutualFriends}>{request.mutualFriends} ortak arkadaş</Text>
+        <Text style={styles.friendName}>{u.fullName}</Text>
+        <Text style={styles.mutualFriends}>@{u.username}</Text>
       </View>
       <View style={styles.requestActions}>
-        <TouchableOpacity style={styles.acceptButton}>
-          <Text style={styles.acceptText}>✓</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.declineButton}>
-          <Text style={styles.declineText}>✕</Text>
+        <TouchableOpacity
+          style={styles.acceptButton}
+          onPress={() => handleAddFriend(u.id)}
+        >
+          <Text style={styles.acceptText}>+ Ekle</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -151,17 +193,15 @@ export default function FriendsScreen({ navigation }) {
             </View>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
-            onPress={() => setActiveTab('requests')}
+            style={[styles.tab, activeTab === 'discover' && styles.tabActive]}
+            onPress={() => setActiveTab('discover')}
           >
-            <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
-              İstekler
+            <Text style={[styles.tabText, activeTab === 'discover' && styles.tabTextActive]}>
+              Keşfet
             </Text>
-            {FRIEND_REQUESTS.length > 0 && (
-              <View style={[styles.tabBadge, styles.tabBadgeNew]}>
-                <Text style={styles.tabBadgeTextNew}>{FRIEND_REQUESTS.length}</Text>
-              </View>
-            )}
+            <View style={[styles.tabBadge, styles.tabBadgeNew]}>
+              <Text style={styles.tabBadgeTextNew}>{allUsers?.length || 0}</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -171,15 +211,35 @@ export default function FriendsScreen({ navigation }) {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {activeTab === 'friends' ? (
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#1C1C1C" />
+              <Text style={styles.loadingText}>Yükleniyor...</Text>
+            </View>
+          ) : activeTab === 'friends' ? (
             <>
-              <Text style={styles.sectionTitle}>Aktif Arkadaşlar</Text>
-              {filteredFriends.map(renderFriendCard)}
+              <Text style={styles.sectionTitle}>Arkadaşlarım ({friends.length})</Text>
+              {filteredFriends.length > 0 ? (
+                filteredFriends.map(renderFriendCard)
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyIcon}>👥</Text>
+                  <Text style={styles.emptyText}>Henüz arkadaşın yok</Text>
+                  <Text style={styles.emptySubtext}>Keşfet sekmesinden arkadaş ekle!</Text>
+                </View>
+              )}
             </>
           ) : (
             <>
-              <Text style={styles.sectionTitle}>Arkadaşlık İstekleri</Text>
-              {FRIEND_REQUESTS.map(renderRequestCard)}
+              <Text style={styles.sectionTitle}>Yeni Kullanıcılar ({allUsers.length})</Text>
+              {filteredUsers.length > 0 ? (
+                filteredUsers.map(renderUserCard)
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyIcon}>🔍</Text>
+                  <Text style={styles.emptyText}>Kullanıcı bulunamadı</Text>
+                </View>
+              )}
             </>
           )}
         </ScrollView>
@@ -435,8 +495,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   acceptButton: {
-    width: 40,
-    height: 40,
+    paddingHorizontal: 16,
+    height: 36,
     borderRadius: 12,
     backgroundColor: '#10B981',
     justifyContent: 'center',
@@ -444,7 +504,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   acceptText: {
-    fontSize: 18,
+    fontSize: 13,
     color: '#FFFFFF',
     fontWeight: '600',
   },
@@ -460,5 +520,38 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#7C7C7C',
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#7C7C7C',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 6,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#7C7C7C',
+    textAlign: 'center',
   },
 });

@@ -9,23 +9,29 @@ import {
   Animated,
   StatusBar,
   Dimensions,
+  Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
-
-const SAMPLE_FAVORITES = [
-  { id: 1, name: 'Cafe Milano', category: 'Kafe', emoji: '☕', rating: 4.8, mood: '😊' },
-  { id: 2, name: 'Sunset Restaurant', category: 'Restoran', emoji: '🍽️', rating: 4.6, mood: '🥰' },
-  { id: 3, name: 'City Park', category: 'Park', emoji: '🌳', rating: 4.9, mood: '😌' },
-  { id: 4, name: 'Art Gallery', category: 'Müze', emoji: '🎨', rating: 4.7, mood: '🤔' },
-];
+const FAVORITES_KEY = '@favorites';
 
 export default function FavoritesScreen({ navigation }) {
-  const [favorites, setFavorites] = useState(SAMPLE_FAVORITES);
+  const [favorites, setFavorites] = useState([]);
+  const [filteredFavorites, setFilteredFavorites] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // Ekran her açıldığında favorileri yükle
+  useFocusEffect(
+    React.useCallback(() => {
+      loadFavorites();
+    }, [])
+  );
 
   useEffect(() => {
     Animated.parallel([
@@ -43,12 +49,100 @@ export default function FavoritesScreen({ navigation }) {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
-  const filters = [
-    { id: 'all', label: 'Tümü' },
-    { id: 'cafe', label: 'Kafe' },
-    { id: 'restaurant', label: 'Restoran' },
-    { id: 'park', label: 'Park' },
-  ];
+  // Favorileri yükle
+  const loadFavorites = async () => {
+    try {
+      setLoading(true);
+      const favoritesJson = await AsyncStorage.getItem(FAVORITES_KEY);
+      if (favoritesJson) {
+        const loadedFavorites = JSON.parse(favoritesJson);
+        console.log('📚 Favoriler yüklendi:', loadedFavorites.length);
+        setFavorites(loadedFavorites);
+        setFilteredFavorites(loadedFavorites);
+      } else {
+        setFavorites([]);
+        setFilteredFavorites([]);
+      }
+    } catch (error) {
+      console.error('Favoriler yüklenirken hata:', error);
+      Alert.alert('Hata', 'Favoriler yüklenemedi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Favoriyi kaldır
+  const removeFavorite = async (item) => {
+    Alert.alert(
+      'Favorilerden Çıkar',
+      `${item.title || item.name} favorilerden çıkarılsın mı?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Çıkar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const updatedFavorites = favorites.filter(fav => fav.id !== item.id);
+              await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updatedFavorites));
+              setFavorites(updatedFavorites);
+              applyFilter(activeFilter, updatedFavorites);
+            } catch (error) {
+              console.error('Favori silinirken hata:', error);
+              Alert.alert('Hata', 'Favori silinemedi');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Filtre uygula
+  const applyFilter = (filterId, favList = favorites) => {
+    setActiveFilter(filterId);
+
+    if (filterId === 'all') {
+      setFilteredFavorites(favList);
+    } else {
+      const filtered = favList.filter(item => {
+        const category = (item.category || '').toLowerCase();
+        const categoryLabel = (item.categoryLabel || '').toLowerCase();
+        return category.includes(filterId) || categoryLabel.includes(filterId);
+      });
+      setFilteredFavorites(filtered);
+    }
+  };
+
+  // Kategorileri dinamik oluştur
+  const getFilters = () => {
+    const categories = new Set(['all']);
+    favorites.forEach(item => {
+      const cat = item.category || item.categoryLabel || '';
+      if (cat) {
+        categories.add(cat.toLowerCase());
+      }
+    });
+
+    const filterMap = {
+      'all': 'Tümü',
+      'food': 'Yemek',
+      'cafe': 'Kafe',
+      'restaurant': 'Restoran',
+      'restoran': 'Restoran',
+      'kafe': 'Kafe',
+      'park': 'Park',
+      'activity': 'Aktivite',
+      'entertainment': 'Eğlence',
+      'place': 'Mekan',
+    };
+
+    return Array.from(categories).map(cat => ({
+      id: cat,
+      label: filterMap[cat] || cat.charAt(0).toUpperCase() + cat.slice(1)
+    }));
+  };
+
+  const filters = getFilters();
 
   return (
     <View style={styles.container}>
@@ -97,7 +191,7 @@ export default function FavoritesScreen({ navigation }) {
                   styles.filterChip,
                   activeFilter === filter.id && styles.filterChipActive,
                 ]}
-                onPress={() => setActiveFilter(filter.id)}
+                onPress={() => applyFilter(filter.id)}
               >
                 <Text
                   style={[
@@ -123,26 +217,43 @@ export default function FavoritesScreen({ navigation }) {
               transform: [{ translateY: slideAnim }],
             }}
           >
-            {favorites.length > 0 ? (
-              favorites.map((item) => (
+            {loading ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptySubtitle}>Yükleniyor...</Text>
+              </View>
+            ) : filteredFavorites.length > 0 ? (
+              filteredFavorites.map((item, index) => (
                 <TouchableOpacity
-                  key={item.id}
+                  key={item.id || index}
                   style={styles.favoriteCard}
                   activeOpacity={0.7}
+                  onLongPress={() => removeFavorite(item)}
                 >
                   <View style={styles.favoriteIconBox}>
-                    <Text style={styles.favoriteEmoji}>{item.emoji}</Text>
+                    <Text style={styles.favoriteEmoji}>{item.icon || '📍'}</Text>
                   </View>
                   <View style={styles.favoriteInfo}>
-                    <Text style={styles.favoriteName}>{item.name}</Text>
-                    <Text style={styles.favoriteCategory}>{item.category}</Text>
+                    <Text style={styles.favoriteName}>{item.title || item.name}</Text>
+                    <Text style={styles.favoriteCategory}>{item.categoryLabel || item.category}</Text>
+                    {item.description && (
+                      <Text style={styles.favoriteDescription} numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.favoriteRight}>
-                    <View style={styles.ratingBox}>
-                      <Text style={styles.ratingStar}>⭐</Text>
-                      <Text style={styles.ratingText}>{item.rating}</Text>
-                    </View>
-                    <Text style={styles.moodEmoji}>{item.mood}</Text>
+                    {item.rating && (
+                      <View style={styles.ratingBox}>
+                        <Text style={styles.ratingStar}>⭐</Text>
+                        <Text style={styles.ratingText}>{item.rating}</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => removeFavorite(item)}
+                    >
+                      <Text style={styles.removeIcon}>🗑️</Text>
+                    </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
               ))
@@ -291,9 +402,27 @@ const styles = StyleSheet.create({
   favoriteCategory: {
     fontSize: 13,
     color: '#7C7C7C',
+    marginBottom: 4,
+  },
+  favoriteDescription: {
+    fontSize: 12,
+    color: '#999',
+    lineHeight: 16,
   },
   favoriteRight: {
     alignItems: 'flex-end',
+    gap: 8,
+  },
+  removeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFF0F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeIcon: {
+    fontSize: 16,
   },
   ratingBox: {
     flexDirection: 'row',

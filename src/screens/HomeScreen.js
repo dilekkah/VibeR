@@ -12,12 +12,13 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import LocalRecommendationService from '../services/LocalRecommendationService';
 
 const FAVORITES_KEY = '@favorites';
 
 export default function HomeScreen({ navigation }) {
-  const [currentUser, setCurrentUser] = useState(null);
+  const { user } = useAuth();
   const [favoritesCount, setFavoritesCount] = useState(0);
   const [searchVisible, setSearchVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -32,22 +33,10 @@ export default function HomeScreen({ navigation }) {
 
   useFocusEffect(
     React.useCallback(() => {
-      loadUser();
       loadFavoritesCount();
       loadRecommendations();
     }, [])
   );
-
-  const loadUser = async () => {
-    try {
-      const userJson = await AsyncStorage.getItem('currentUser');
-      if (userJson) {
-        setCurrentUser(JSON.parse(userJson));
-      }
-    } catch (error) {
-      console.error('Kullanıcı yüklenemedi:', error);
-    }
-  };
 
   const loadFavoritesCount = async () => {
     try {
@@ -124,8 +113,8 @@ export default function HomeScreen({ navigation }) {
         style: 'destructive',
         onPress: async () => {
           try {
-            await AsyncStorage.removeItem('currentUser');
-            setCurrentUser(null);
+            // AuthContext'teki logout fonksiyonunu kullan
+            // Gerekirse navigation.replace buradan kaldırılabilir
             navigation.replace('Welcome');
           } catch (error) {
             console.error('Çıkış hatası:', error);
@@ -191,6 +180,17 @@ export default function HomeScreen({ navigation }) {
     searchIcon: {
       fontSize: 24,
       color: isDarkMode ? '#fff' : '#000',
+    },
+    profileButton: {
+      width: 40,
+      height: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: isDarkMode ? '#2C2C2C' : '#F0F0F0',
+      borderRadius: 20,
+    },
+    profileIcon: {
+      fontSize: 20,
     },
     scrollContent: {
       paddingBottom: 100,
@@ -781,14 +781,14 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.menuHeader}>
             <View style={styles.menuUserAvatar}>
               <Text style={styles.menuAvatarText}>
-                {currentUser ? currentUser.name.charAt(0).toUpperCase() : 'M'}
+                {user ? user.fullName.charAt(0).toUpperCase() : 'M'}
               </Text>
             </View>
             <Text style={styles.menuUserName}>
-              {currentUser ? currentUser.name : 'Kullanıcı'}
+              {user ? user.fullName : 'Kullanıcı'}
             </Text>
             <Text style={styles.menuUserEmail}>
-              {currentUser ? currentUser.email : 'email@example.com'}
+              {user ? user.email : 'email@example.com'}
             </Text>
           </View>
 
@@ -824,6 +824,17 @@ export default function HomeScreen({ navigation }) {
             >
               <Text style={styles.menuItemIcon}>👥</Text>
               <Text style={styles.menuItemText}>Arkadaşlarım</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuVisible(false);
+                navigation.navigate('LiveStatus');
+              }}
+            >
+              <Text style={styles.menuItemIcon}>📸</Text>
+              <Text style={styles.menuItemText}>Canlı Durum</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -993,18 +1004,27 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.discoveringText}>DISCOVERING</Text>
             <View style={styles.locationContainer}>
               <Text style={styles.locationText}>
-                {currentUser ? currentUser.name : 'Mekanlar'}
+                {user ? user.fullName : 'Mekanlar'}
               </Text>
               <Text style={{ fontSize: 16, color: isDarkMode ? '#fff' : '#000' }}>▼</Text>
             </View>
           </View>
 
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={() => setSearchVisible(true)}
-          >
-            <Text style={styles.searchIcon}>🔍</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={styles.searchButton}
+              onPress={() => setSearchVisible(true)}
+            >
+              <Text style={styles.searchIcon}>🔍</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.profileButton}
+              onPress={() => navigation.navigate('Profile')}
+            >
+              <Text style={styles.profileIcon}>{user?.avatar || '👤'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -1160,11 +1180,11 @@ export default function HomeScreen({ navigation }) {
                   <View style={styles.placeAuthor}>
                     <View style={styles.authorAvatar}>
                       <Text style={styles.avatarText}>
-                        {currentUser ? currentUser.name.charAt(0) : 'M'}
+                        {user ? user.fullName.charAt(0) : 'M'}
                       </Text>
                     </View>
                     <Text style={styles.authorName}>
-                      {currentUser ? currentUser.name : 'Keşfet'}
+                      {user ? user.fullName : 'Keşfet'}
                     </Text>
                   </View>
 
@@ -1196,7 +1216,7 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity
               style={styles.placeCard}
               activeOpacity={0.9}
-              onPress={() => navigation.navigate('AmbientControl')}
+              onPress={() => navigation.navigate('LiveStatus')}
             >
               <View style={[styles.placeImage, { backgroundColor: '#5d4037' }]}>
                 <View style={[styles.decorativeCircle, styles.decorativeCircle1]} />

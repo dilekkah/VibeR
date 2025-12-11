@@ -82,18 +82,31 @@ class UnifiedPlacesService {
         console.log(`✅ Google Places: ${allResults.length} mekan bulundu`);
       }
 
-      // 2. Local recommendations (her zaman ekle)
-      const localResults = LocalRecommendationService.getRecommendations({
+      // 2. Local recommendations (HER ZAMAN EKLE - Google başarısız olsa bile)
+      console.log('📚 Local database araması başlatılıyor...', { moods, companions, needs, category });
+
+      let localResults = LocalRecommendationService.getRecommendations({
         moods,
         companions,
         needs,
         category,
       });
 
-      console.log(`📚 Local database: ${localResults.length} öneri bulundu`);
+      console.log(`✅ Local database (ilk arama): ${localResults.length} öneri bulundu`);
+
+      if (localResults.length === 0 && moods.length > 0) {
+        // Filtreler çok katı ise sadece mood ile dene
+        console.log('⚠️ Filtreler gevşetiliyor, sadece mood ile aranıyor...');
+        const relaxedResults = LocalRecommendationService.getByMoods(moods);
+        console.log(`📚 Gevşetilmiş arama: ${relaxedResults.length} sonuç`);
+        localResults = [...localResults, ...relaxedResults];
+      }
+
+      console.log(`✅ Local database (toplam): ${localResults.length} öneri`);
 
       // 3. Birleştir ve deduplicate
       const combined = [...allResults, ...localResults];
+      console.log(`🔄 Birleştirme: Google=${allResults.length} + Local=${localResults.length} = Toplam ${combined.length}`);
 
       // Google Places'den gelenler önce
       const sorted = combined.sort((a, b) => {
@@ -102,7 +115,15 @@ class UnifiedPlacesService {
         return 0;
       });
 
-      return sorted;
+      // 4. Makul bir limite düşür (Google + Local birlikte max 20-25 öneri)
+      const MAX_RESULTS = 20;
+      const limited = sorted.slice(0, MAX_RESULTS);
+
+      if (sorted.length > MAX_RESULTS) {
+        console.log(`✂️ Sonuçlar sınırlandırıldı: ${sorted.length} → ${limited.length} (max ${MAX_RESULTS})`);
+      }
+
+      return limited;
 
     } catch (error) {
       console.error('❌ Unified Recommendations hatası:', error);
@@ -143,11 +164,20 @@ class UnifiedPlacesService {
       const localResults = LocalRecommendationService.getByCategory(category);
       results.push(...localResults);
 
-      return results;
+      // Limit uygula
+      const MAX_CATEGORY_RESULTS = 20;
+      const limited = results.slice(0, MAX_CATEGORY_RESULTS);
+
+      if (results.length > MAX_CATEGORY_RESULTS) {
+        console.log(`✂️ Kategori sonuçları sınırlandırıldı: ${results.length} → ${limited.length}`);
+      }
+
+      return limited;
 
     } catch (error) {
       console.error('❌ Category search hatası:', error);
-      return LocalRecommendationService.getByCategory(category);
+      const fallback = LocalRecommendationService.getByCategory(category);
+      return fallback.slice(0, 20); // Fallback'te de limit
     }
   }
 
@@ -366,6 +396,145 @@ class UnifiedPlacesService {
   setUseGooglePlaces(use) {
     this.useGooglePlaces = use;
     console.log(`Google Places ${use ? 'aktif' : 'pasif'}`);
+  }
+
+  /**
+   * Yakındaki tüm mekanları mesafeye göre sıralı getir
+   */
+  async getNearbyVenuesSortedByDistance(userLocation, radius = 5000) {
+    try {
+      const venues = [];
+
+      // 1. Google Places'den gerçek mekanları al
+      if (this.useGooglePlaces && GooglePlacesService.isAvailable() && userLocation) {
+        console.log('🌍 Yakındaki mekanlar Google Places\'den aranıyor...');
+
+        // Farklı tip mekanları ara
+        const types = ['restaurant', 'cafe', 'park', 'museum', 'shopping_mall', 'bar'];
+
+        for (const type of types) {
+          try {
+            const places = await GooglePlacesService.searchNearbyPlaces(
+              userLocation.latitude,
+              userLocation.longitude,
+              type,
+              radius
+            );
+
+            if (places && places.length > 0) {
+              const formatted = this.formatGooglePlaces(places, null);
+              venues.push(...formatted);
+            }
+          } catch (error) {
+            console.error(`Tip ${type} için arama hatası:`, error);
+          }
+        }
+      }
+
+      // 2. Local database'den mekanları al (koordinatlı olanlar)
+      const localVenues = LocalRecommendationService.getAll()
+        .filter(venue => venue.latitude && venue.longitude);
+
+      venues.push(...localVenues.map(venue => ({
+        ...venue,
+        location: {
+          lat: venue.latitude,
+          lng: venue.longitude
+        }
+      })));
+
+      // 3. Her mekan için mesafe hesapla
+      const venuesWithDistance = venues.map(venue => {
+        const venueLat = venue.location?.lat || venue.latitude;
+        const venueLng = venue.location?.lng || venue.longitude;
+
+        if (!venueLat || !venueLng) {
+          return { ...venue, distance: 999999 }; // Koordinatsız mekanlar en sona
+        }
+
+        const distance = this.calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          venueLat,
+          venueLng
+        );
+
+        return {
+          ...venue,
+          distance,
+          latitude: venueLat,
+          longitude: venueLng,
+          name: venue.title || venue.name,
+          address: venue.address || venue.description,
+        };
+      });
+
+      // 4. Mesafeye göre sırala (yakından uzağa)
+      const sorted = venuesWithDistance
+        .filter(v => v.distance < 999999) // Koordinatsız mekanları filtrele
+        .sort((a, b) => a.distance - b.distance);
+
+      // 5. Tekrarlananları temizle (aynı isimli mekanlar)
+      const unique = [];
+      const seenNames = new Set();
+
+      for (const venue of sorted) {
+        const name = venue.name?.toLowerCase();
+        if (name && !seenNames.has(name)) {
+          seenNames.add(name);
+          unique.push(venue);
+        }
+      }
+
+      console.log(`✅ Toplam ${unique.length} benzersiz mekan bulundu ve mesafeye göre sıralandı`);
+      return unique;
+
+    } catch (error) {
+      console.error('❌ Nearby venues hatası:', error);
+      // Fallback: Sadece local data
+      const localVenues = LocalRecommendationService.getAll()
+        .filter(venue => venue.latitude && venue.longitude)
+        .map(venue => ({
+          ...venue,
+          location: {
+            lat: venue.latitude,
+            lng: venue.longitude
+          },
+          name: venue.title || venue.name,
+          distance: this.calculateDistance(
+            userLocation.latitude,
+            userLocation.longitude,
+            venue.latitude,
+            venue.longitude
+          )
+        }))
+        .sort((a, b) => a.distance - b.distance);
+
+      return localVenues;
+    }
+  }
+
+  /**
+   * İki nokta arası mesafe hesaplama (Haversine formülü)
+   */
+  calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Dünya'nın yarıçapı (km)
+    const dLat = this.toRad(lat2 - lat1);
+    const dLon = this.toRad(lon2 - lon1);
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+
+    return distance; // km cinsinden
+  }
+
+  toRad(value) {
+    return (value * Math.PI) / 180;
   }
 
   /**

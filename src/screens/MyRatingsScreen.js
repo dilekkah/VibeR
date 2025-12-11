@@ -11,17 +11,19 @@ import {
   Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../context/AuthContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
 export default function MyRatingsScreen({ navigation }) {
+  const { user } = useAuth();
   const [ratings, setRatings] = useState([]);
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    loadRatings();
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -39,16 +41,40 @@ export default function MyRatingsScreen({ navigation }) {
 
   const loadRatings = async () => {
     try {
-      const ratingsJson = await AsyncStorage.getItem('userRatings');
-      if (ratingsJson) {
-        setRatings(JSON.parse(ratingsJson));
-      }
+      setLoading(true);
+
+      // Feed posts'tan kullanıcının değerlendirmelerini çek
+      const postsJson = await AsyncStorage.getItem('@feed_posts');
+      const allPosts = postsJson ? JSON.parse(postsJson) : [];
+
+      // Sadece bu kullanıcının postlarını filtrele ve dönüştür
+      const userRatings = allPosts
+        .filter(post => post.userId === user?.id)
+        .map(post => ({
+          placeName: post.place || post.venue?.name || 'Mekan',
+          overallRating: post.rating || 0,
+          rating: post.rating || 0,
+          comment: post.note || post.comment || '',
+          createdAt: post.timestamp || post.createdAt || new Date().toISOString(),
+          date: post.timestamp || post.createdAt || new Date().toISOString(),
+          placeType: post.placeType || post.venue?.category || '',
+        }))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      setRatings(userRatings);
     } catch (error) {
-      console.error('Error loading ratings:', error);
+      console.error('Değerlendirmeler yüklenemedi:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // Ekrana her dönüldüğünde değerlendirmeleri yenile
+  useFocusEffect(
+    React.useCallback(() => {
+      loadRatings();
+    }, [user])
+  );
 
   const renderStars = (rating) => {
     return '⭐'.repeat(rating) + '☆'.repeat(5 - rating);
@@ -115,7 +141,7 @@ export default function MyRatingsScreen({ navigation }) {
               <Text style={styles.statValue}>
                 {ratings.length > 0
                   ? (
-                    ratings.reduce((sum, r) => sum + r.rating, 0) /
+                    ratings.reduce((sum, r) => sum + (r.overallRating || r.rating || 0), 0) /
                     ratings.length
                   ).toFixed(1)
                   : '0'}
@@ -127,7 +153,7 @@ export default function MyRatingsScreen({ navigation }) {
                 <Text style={styles.statEmoji}>🏆</Text>
               </View>
               <Text style={styles.statValue}>
-                {ratings.filter((r) => r.rating === 5).length}
+                {ratings.filter((r) => r.overallRating === 5).length}
               </Text>
               <Text style={styles.statLabel}>5 Yıldız</Text>
             </View>
@@ -170,14 +196,14 @@ export default function MyRatingsScreen({ navigation }) {
                         {item.placeName || 'Mekan'}
                       </Text>
                       <Text style={styles.placeDate}>
-                        {formatDate(item.date)}
+                        {formatDate(item.createdAt || item.date)}
                       </Text>
                     </View>
                     <View style={styles.ratingBadge}>
-                      <Text style={styles.ratingBadgeText}>{item.rating}</Text>
+                      <Text style={styles.ratingBadgeText}>{item.overallRating || item.rating}</Text>
                     </View>
                   </View>
-                  <Text style={styles.starsText}>{renderStars(item.rating)}</Text>
+                  <Text style={styles.starsText}>{renderStars(item.overallRating || item.rating)}</Text>
                   {item.comment && (
                     <Text style={styles.commentText}>"{item.comment}"</Text>
                   )}

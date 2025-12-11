@@ -28,18 +28,57 @@ class GooglePlacesService {
 
   /**
    * Aktivite türüne göre Google Places türleri
+   * Sadece yemek/içecek mekanları için optimize edildi
    */
   getPlaceTypes(activityType) {
     const typeMap = {
-      food: ['restaurant', 'cafe', 'bakery', 'meal_takeaway'],
-      coffee: ['cafe', 'coffee_shop'],
-      culture: ['museum', 'art_gallery', 'library', 'tourist_attraction'],
-      nature: ['park', 'natural_feature', 'campground'],
-      shopping: ['shopping_mall', 'store', 'clothing_store', 'book_store'],
-      entertainment: ['movie_theater', 'amusement_park', 'bowling_alley', 'night_club'],
+      food: ['restaurant', 'meal_delivery', 'meal_takeaway'],
+      coffee: ['cafe', 'bakery'],
+      drinks: ['bar', 'night_club'],
+      breakfast: ['cafe', 'bakery'],
+      lunch: ['restaurant'],
+      dinner: ['restaurant', 'meal_delivery'],
+      dessert: ['bakery', 'cafe'],
     };
 
-    return typeMap[activityType] || ['tourist_attraction'];
+    return typeMap[activityType] || ['restaurant', 'cafe'];
+  }
+
+  /**
+   * Uygun olmayan mekanları filtrele
+   */
+  isValidPlace(place) {
+    const name = place.name?.toLowerCase() || '';
+    const types = place.types || [];
+
+    // Kabul edilmeyen türler
+    const blacklistedTypes = [
+      'lodging', 'hotel', 'real_estate_agency', 'moving_company',
+      'storage', 'car_rental', 'car_repair', 'car_wash', 'gas_station',
+      'atm', 'bank', 'post_office', 'hospital', 'pharmacy',
+      'school', 'university', 'gym', 'spa', 'beauty_salon',
+      'hair_care', 'laundry', 'convenience_store', 'supermarket'
+    ];
+
+    // Blacklist'te olan tür varsa reddet
+    if (types.some(type => blacklistedTypes.includes(type))) {
+      return false;
+    }
+
+    // İsimde bu kelimeler varsa reddet
+    const blacklistedKeywords = [
+      'hotel', 'motel', 'apart', 'residence', 'hostel',
+      'pharmacy', 'eczane', 'hospital', 'hastane', 'klinik',
+      'market', 'supermarket', 'migros', 'carrefour', 'şok',
+      'bank', 'banka', 'atm', 'post', 'ptt',
+      'otopark', 'parking', 'benzin', 'gas station'
+    ];
+
+    if (blacklistedKeywords.some(keyword => name.includes(keyword))) {
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -117,24 +156,29 @@ class GooglePlacesService {
         });
 
         if (response.data.status === 'OK') {
-          const places = response.data.results.slice(0, 5).map(place => ({
-            id: `google_${place.place_id}`,
-            name: place.name,
-            location: {
-              lat: place.geometry.location.lat,
-              lng: place.geometry.location.lng,
-            },
-            address: place.vicinity,
-            rating: place.rating || null,
-            userRatingsTotal: place.user_ratings_total || 0,
-            photos: place.photos ? [place.photos[0].photo_reference] : [],
-            types: place.types,
-            priceLevel: place.price_level || null,
-            openNow: place.opening_hours?.open_now || null,
-            placeId: place.place_id,
-            source: 'Google Places',
-          }));
+          // Sadece uygun mekanları al
+          const places = response.data.results
+            .filter(place => this.isValidPlace(place))
+            .slice(0, 5)
+            .map(place => ({
+              id: `google_${place.place_id}`,
+              name: place.name,
+              location: {
+                lat: place.geometry.location.lat,
+                lng: place.geometry.location.lng,
+              },
+              address: place.vicinity,
+              rating: place.rating || null,
+              userRatingsTotal: place.user_ratings_total || 0,
+              photos: place.photos ? [place.photos[0].photo_reference] : [],
+              types: place.types,
+              priceLevel: place.price_level || null,
+              openNow: place.opening_hours?.open_now || null,
+              placeId: place.place_id,
+              source: 'Google Places',
+            }));
 
+          console.log(`✅ ${type} için ${places.length} uygun mekan filtrelendi`);
           allResults.push(...places);
         } else if (response.data.status === 'ZERO_RESULTS') {
           console.log(`ℹ️ ${type} için sonuç bulunamadı`);
@@ -235,26 +279,37 @@ class GooglePlacesService {
 
   /**
    * Rota için optimize edilmiş mekanları bul
+   * Her aktivite için en iyi 2-3 mekan döndürür
    */
   async findRouteStops(startLat, startLng, activityTypes, duration) {
     const results = [];
     const radius = this.calculateRadiusByDuration(duration);
 
+    // Her aktivite için kaç mekan alınacak (toplam süreye göre)
+    const placesPerActivity = duration >= 6 ? 3 : duration >= 4 ? 2 : 1;
+
+    console.log(`🎯 Her aktivite için ${placesPerActivity} mekan aranıyor (toplam ${duration} saat)`);
+
     for (const activityType of activityTypes) {
       const places = await this.searchNearbyPlaces(startLat, startLng, activityType, radius);
 
       if (places.length > 0) {
-        // En yüksek puanlı mekanı seç
-        const bestPlace = places.sort((a, b) => {
+        // En yüksek puanlı mekanları seç
+        const sortedPlaces = places.sort((a, b) => {
           const scoreA = (a.rating || 0) * Math.log10((a.userRatingsTotal || 0) + 1);
           const scoreB = (b.rating || 0) * Math.log10((b.userRatingsTotal || 0) + 1);
           return scoreB - scoreA;
-        })[0];
+        });
 
-        results.push(bestPlace);
+        // İlk N mekanı al
+        const selectedPlaces = sortedPlaces.slice(0, placesPerActivity);
+        results.push(...selectedPlaces);
+
+        console.log(`✅ ${activityType}: ${selectedPlaces.length} mekan eklendi`);
       }
     }
 
+    console.log(`📍 Toplam ${results.length} mekan bulundu`);
     return results;
   }
 
