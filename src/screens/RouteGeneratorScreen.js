@@ -10,7 +10,9 @@ import {
   Alert,
   StatusBar,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
+import GooglePlacesService from '../services/GooglePlacesService';
 
 const { width } = Dimensions.get('window');
 
@@ -42,6 +44,8 @@ export default function RouteGeneratorScreen({ navigation }) {
   const [selectedActivities, setSelectedActivities] = useState([]);
   const [transport, setTransport] = useState('walk');
   const [generating, setGenerating] = useState(false);
+  const [showRoute, setShowRoute] = useState(false);
+  const [generatedRoute, setGeneratedRoute] = useState(null);
 
   // Animasyonlar
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -71,7 +75,7 @@ export default function RouteGeneratorScreen({ navigation }) {
     );
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (selectedActivities.length === 0) {
       Alert.alert('Uyarı', 'Lütfen en az bir aktivite türü seçin');
       return;
@@ -79,18 +83,155 @@ export default function RouteGeneratorScreen({ navigation }) {
 
     setGenerating(true);
 
-    // Simüle edilmiş rota oluşturma
-    setTimeout(() => {
-      setGenerating(false);
-      Alert.alert(
-        'Rota Hazır! 🎉',
-        `${duration} saatlik ${selectedActivities.length} aktiviteli rotanız oluşturuldu!`,
-        [
-          { text: 'Görüntüle', onPress: () => navigation.goBack() },
-        ]
+    try {
+      // Kullanıcının konumunu al
+      const userLocation = await GooglePlacesService.getCurrentLocation();
+      console.log('📍 Kullanıcı konumu:', userLocation);
+
+      // Google Places ile gerçek mekanları bul
+      const realPlaces = await GooglePlacesService.findRouteStops(
+        userLocation.latitude,
+        userLocation.longitude,
+        selectedActivities,
+        duration
       );
-    }, 2000);
+
+      console.log(`✅ ${realPlaces.length} gerçek mekan bulundu`);
+
+      if (realPlaces.length === 0) {
+        // API key yoksa veya sonuç bulunamadıysa mock data kullan
+        console.log('ℹ️ Gerçek mekan bulunamadı, örnek veriler kullanılıyor');
+        const mockRoute = {
+          duration,
+          activities: selectedActivities,
+          transport,
+          isReal: false,
+          stops: selectedActivities.map((actId, index) => {
+            const activity = ACTIVITY_TYPES.find(a => a.id === actId);
+            return {
+              id: index + 1,
+              title: `${activity.emoji} ${activity.label}`,
+              time: `${9 + index * 2}:00`,
+              location: `Örnek Mekan ${index + 1}`,
+              address: 'Konum bilgisi yok',
+              duration: `${Math.floor(duration / selectedActivities.length)} saat`,
+              color: activity.color,
+              rating: null,
+            };
+          }),
+        };
+        setGeneratedRoute(mockRoute);
+      } else {
+        // Gerçek mekanlarla rota oluştur
+        const realRoute = {
+          duration,
+          activities: selectedActivities,
+          transport,
+          isReal: true,
+          stops: realPlaces.map((place, index) => {
+            const activity = ACTIVITY_TYPES.find(a =>
+              selectedActivities.includes(a.id)
+            ) || ACTIVITY_TYPES[index % ACTIVITY_TYPES.length];
+
+            const timePerStop = Math.floor(duration / realPlaces.length);
+            const startHour = 9 + (index * timePerStop);
+
+            return {
+              id: place.placeId || `place_${index}`,
+              title: place.name,
+              time: `${startHour}:00`,
+              location: place.address || 'Adres bilgisi yok',
+              address: place.address,
+              duration: `~${timePerStop} saat`,
+              color: activity.color,
+              rating: place.rating,
+              emoji: activity.emoji,
+              lat: place.location.lat,
+              lng: place.location.lng,
+              photos: place.photos,
+            };
+          }),
+        };
+        setGeneratedRoute(realRoute);
+      }
+
+      setGenerating(false);
+      setShowRoute(true);
+    } catch (error) {
+      console.error('Rota oluşturma hatası:', error);
+      setGenerating(false);
+      Alert.alert('Hata', 'Rota oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.');
+    }
   };
+
+  // Eğer rota oluşturulduysa göster
+  if (showRoute && generatedRoute) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => setShowRoute(false)}
+            >
+              <Text style={styles.backIcon}>←</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Rotanız Hazır 🎉</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            <View style={styles.routeSummary}>
+              <Text style={styles.routeSummaryTitle}>Rota Özeti</Text>
+              <Text style={styles.routeSummaryText}>
+                ⏱️ Süre: {generatedRoute.duration} saat
+              </Text>
+              <Text style={styles.routeSummaryText}>
+                📍 Durak Sayısı: {generatedRoute.stops.length}
+              </Text>
+              <Text style={styles.routeSummaryText}>
+                🚶 Ulaşım: {TRANSPORT_OPTIONS.find(t => t.id === generatedRoute.transport)?.label}
+              </Text>
+            </View>
+
+            {generatedRoute.isReal && (
+              <View style={styles.realDataBadge}>
+                <Text style={styles.realDataText}>✅ Gerçek Mekanlar</Text>
+              </View>
+            )}
+
+            {generatedRoute.stops.map((stop, index) => (
+              <View key={stop.id} style={styles.routeStop}>
+                <View style={[styles.stopNumber, { backgroundColor: stop.color }]}>
+                  <Text style={styles.stopNumberText}>{stop.emoji || (index + 1)}</Text>
+                </View>
+                <View style={styles.stopDetails}>
+                  <Text style={styles.stopTitle}>{stop.title}</Text>
+                  {stop.rating && (
+                    <Text style={styles.stopRating}>⭐ {stop.rating} / 5</Text>
+                  )}
+                  <Text style={styles.stopTime}>🕐 {stop.time}</Text>
+                  <Text style={styles.stopLocation}>📍 {stop.location}</Text>
+                  <Text style={styles.stopDuration}>⏱️ {stop.duration}</Text>
+                </View>
+              </View>
+            ))}
+
+            <TouchableOpacity
+              style={styles.generateButton}
+              onPress={() => {
+                setShowRoute(false);
+                setSelectedActivities([]);
+              }}
+            >
+              <Text style={styles.generateButtonText}>Yeni Rota Oluştur</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -584,5 +725,101 @@ const styles = StyleSheet.create({
   generateIcon: {
     fontSize: 18,
     marginLeft: 8,
+  },
+  routeSummary: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  routeSummaryTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1C1C1C',
+    marginBottom: 16,
+  },
+  routeSummaryText: {
+    fontSize: 15,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  routeStop: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  stopNumber: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  stopNumberText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  stopDetails: {
+    flex: 1,
+  },
+  stopTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1C1C1C',
+    marginBottom: 6,
+  },
+  stopTime: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 3,
+  },
+  stopLocation: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 3,
+  },
+  stopDuration: {
+    fontSize: 13,
+    color: '#666',
+  },
+  stopRating: {
+    fontSize: 13,
+    color: '#FFA500',
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  realDataBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+    shadowColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  realDataText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

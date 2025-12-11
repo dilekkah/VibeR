@@ -1,4 +1,40 @@
 {
-  "name": "NewProject",
-  "displayName": "NewProject"
+  "expo": {
+    "name": "VibeR",
+    "slug": "viber",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#007AFF"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.viber.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Bu uygulama size yakın mekanları önerebilmek için konumunuza erişim gerektirir.",
+        "NSPhotoLibraryUsageDescription": "Profil fotoğrafı yüklemek için fotoğraf kütüphanenize erişim gerekir.",
+        "NSCameraUsageDescription": "Profil fotoğrafı çekmek için kameraya erişim gerekir.",
+        "NSContactsUsageDescription": "Arkadaşlarınızı bulabilmek için rehberinize erişim gerekir."
+      }
+    },
+    "android": {
+      "package": "com.viber.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_CONTACTS"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
 }

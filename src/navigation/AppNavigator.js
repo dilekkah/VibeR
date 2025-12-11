@@ -9,6 +9,11 @@ import CompanionFilterScreen from '../screens/CompanionFilterScreen';
 import NeedFilterScreen from '../screens/NeedFilterScreen';
 import AmbientControlScreen from '../screens/AmbientControlScreen';
 import RecommendationScreen from '../screens/RecommendationScreen';
+import FavoritesScreen from '../screens/FavoritesScreen';
+import FriendsScreen from '../screens/FriendsScreen';
+import MyRatingsScreen from '../screens/MyRatingsScreen';
+import RouteGeneratorScreen from '../screens/RouteGeneratorScreen';
+import FeedScreen from '../screens/FeedScreen';
 
 const Stack = createStackNavigator();
 
@@ -67,6 +72,36 @@ const AppNavigator = () => {
           name="Recommendation"
           component={RecommendationScreen}
           options={{ title: 'Öneriler' }}
+        />
+
+        <Stack.Screen
+          name="Favorites"
+          component={FavoritesScreen}
+          options={{ title: 'Favoriler' }}
+        />
+
+        <Stack.Screen
+          name="Friends"
+          component={FriendsScreen}
+          options={{ title: 'Arkadaşlar' }}
+        />
+
+        <Stack.Screen
+          name="MyRatings"
+          component={MyRatingsScreen}
+          options={{ title: 'Değerlendirmelerim' }}
+        />
+
+        <Stack.Screen
+          name="RouteGenerator"
+          component={RouteGeneratorScreen}
+          options={{ title: 'Rota Oluştur' }}
+        />
+
+        <Stack.Screen
+          name="Feed"
+          component={FeedScreen}
+          options={{ title: 'Akış' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LocalRecommendationService from '../services/LocalRecommendationService';
+import UnifiedPlacesService from '../services/UnifiedPlacesService';
+import * as Location from 'expo-location';
 
 const { width } = Dimensions.get('window');
 
@@ -53,6 +55,7 @@ export default function RecommendationScreen({ route, navigation }) {
     companions: [],
     needs: [],
   });
+  const [userLocation, setUserLocation] = useState(null);
 
   // Animasyonlar
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -97,6 +100,9 @@ export default function RecommendationScreen({ route, navigation }) {
       needs: uniqueNeeds,
     });
 
+    // Konum al
+    getUserLocation();
+
     loadRecommendations(uniqueMoods, uniqueCompanions, uniqueNeeds);
 
     Animated.parallel([
@@ -118,50 +124,74 @@ export default function RecommendationScreen({ route, navigation }) {
     filterByCategory();
   }, [selectedCategory, recommendations]);
 
-  const loadRecommendations = (moodFilters = [], companionFilters = [], needFilters = []) => {
+  const getUserLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('⚠️ Konum izni verilmedi');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const coords = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+
+      setUserLocation(coords);
+      console.log('📍 Kullanıcı konumu alındı:', coords);
+    } catch (error) {
+      console.error('❌ Konum alınamadı:', error);
+    }
+  };
+
+  const loadRecommendations = async (moodFilters = [], companionFilters = [], needFilters = []) => {
     setLoading(true);
 
     try {
       let results = [];
 
-      console.log('Filtreler uygulanıyor:', {
+      console.log('🔍 Filtreler uygulanıyor:', {
         moodFilters,
         companionFilters,
         needFilters,
+        hasLocation: !!userLocation,
       });
 
-      // Eğer herhangi bir filtre varsa akıllı öneri kullan
+      // 🌍 UNIFIED SERVICE: Google Places + Local Data
       if (moodFilters.length > 0 || companionFilters.length > 0 || needFilters.length > 0) {
-        // Akıllı öneriler (skorlama ile)
-        results = LocalRecommendationService.getSmartRecommendations({
+        console.log('🚀 UnifiedPlacesService kullanılıyor...');
+
+        results = await UnifiedPlacesService.getRecommendations({
           moods: moodFilters,
           companions: companionFilters,
           needs: needFilters,
-        }, 100);
+        }, userLocation);
 
-        console.log('Akıllı öneri sonuçları:', results.length);
+        console.log(`✅ Unified Service: ${results.length} sonuç (Google + Local)`);
 
-        // Eğer akıllı öneri sonuç vermezse, sadece mood filtresi dene
-        if (results.length === 0 && moodFilters.length > 0) {
-          results = LocalRecommendationService.getByMoods(moodFilters);
-          console.log('Sadece mood filtresi sonuçları:', results.length);
-        }
-
-        // Hala sonuç yoksa kombinasyonları gevşet
+        // Eğer Unified Service sonuç vermezse fallback
         if (results.length === 0) {
-          results = LocalRecommendationService.getRecommendations({
+          console.log('⚠️ Fallback: LocalRecommendationService kullanılıyor');
+          results = LocalRecommendationService.getSmartRecommendations({
             moods: moodFilters,
-            companions: [],
-            needs: [],
-          });
-          console.log('Gevşetilmiş filtre sonuçları:', results.length);
+            companions: companionFilters,
+            needs: needFilters,
+          }, 100);
         }
       }
 
       // Hala sonuç yoksa rastgele öneriler
       if (results.length === 0) {
-        results = LocalRecommendationService.getRandomRecommendations(50);
-        console.log('Rastgele öneriler:', results.length);
+        console.log('📚 Rastgele öneriler getiriliyor...');
+        results = await UnifiedPlacesService.getRandomRecommendations(50, userLocation);
+
+        if (results.length === 0) {
+          results = LocalRecommendationService.getRandomRecommendations(50);
+        }
       }
 
       setRecommendations(results);
